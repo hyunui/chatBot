@@ -1,4 +1,4 @@
-Flask
+flask
 requests
+yfinance
 beautifulsoup4
-pandas
