@@ -2,81 +2,34 @@ from flask import Flask, request, jsonify
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
-try:
-    print("====== 서버 시작! ======")
-    # 이하 기존 코드
 app = Flask(__name__)
 
-# 1. 업비트 코인명-심볼 자동매핑
-def get_upbit_korean_map():
-    url = "https://api.upbit.com/v1/market/all"
-    resp = requests.get(url)
-    markets = resp.json()
-    kr_map = {}
-    for m in markets:
-        if m["market"].startswith("KRW-"):
-            symbol = m["market"].replace("KRW-", "")
-            kr_name = m["korean_name"].strip()
-            kr_map[kr_name] = symbol
-            kr_map[symbol] = kr_name
-    return kr_map
+# 1. 코인게코 한글/영문/심볼 자동 매핑
+def get_coingecko_kor_map():
+    url = "https://api.coingecko.com/api/v3/coins/list?include_platform=false"
+    r = requests.get(url)
+    data = r.json()
+    kor_map = {}
+    for c in data:
+        name = c.get('name', '').strip()
+        symbol = c.get('symbol', '').upper()
+        id = c.get('id', '').lower()
+        kor_map[name] = symbol
+        kor_map[symbol] = name
+        kor_map[id] = symbol
+    return kor_map
 
-# 2. 빗썸 코인명-심볼 자동매핑 (홈페이지 파싱)
-def get_bithumb_korean_map():
-    try:
-        resp2 = requests.get("https://www.bithumb.com/")
-        soup = BeautifulSoup(resp2.text, "html.parser")
-        kr_map = {}
-        for tr in soup.select("table[class*=coin_table] tbody tr"):
-            try:
-                name = tr.select_one("p.coin_list_coin").text.strip()
-                symbol = tr.select_one("strong.tit_coin").text.strip()
-                kr_map[name] = symbol
-                kr_map[symbol] = name
-            except:
-                continue
-        return kr_map
-    except:
-        return {}
-
-# 3. 코인원 코인명-심볼 자동매핑 (홈페이지 파싱)
-def get_coinone_korean_map():
-    try:
-        resp2 = requests.get("https://coinone.co.kr/exchange/trade/krw/all")
-        soup = BeautifulSoup(resp2.text, "html.parser")
-        kr_map = {}
-        for item in soup.select("div.coin-info"):
-            try:
-                name = item.select_one("strong.coin-name").text.strip()
-                symbol = item.select_one("span.coin-symbol").text.strip()
-                kr_map[name] = symbol
-                kr_map[symbol] = name
-            except:
-                continue
-        return kr_map
-    except:
-        return {}
-
-# 서버 시작 시 한 번씩 캐싱
-print("업비트 매핑시도")
-UPBIT_KR_MAP = get_upbit_korean_map()
-print("빗썸 매핑시도")
-BITHUMB_KR_MAP = get_bithumb_korean_map()
-print("코인원 매핑시도")
-COINONE_KR_MAP = get_coinone_korean_map()
+COINGECKO_KR_MAP = get_coingecko_kor_map()
 
 def kr_to_symbol(name):
-    for m in [UPBIT_KR_MAP, BITHUMB_KR_MAP, COINONE_KR_MAP]:
-        if name in m:
-            return m[name]
+    if not name.isascii():
+        return COINGECKO_KR_MAP.get(name, name.upper())
     return name.upper()
 
 def symbol_to_kr(symbol):
-    for m in [UPBIT_KR_MAP, BITHUMB_KR_MAP, COINONE_KR_MAP]:
-        if symbol.upper() in m:
-            return m[symbol.upper()]
-    return symbol.upper()
+    return COINGECKO_KR_MAP.get(symbol.upper(), symbol.upper())
 
 # 환율
 def get_exchange_rate():
@@ -229,6 +182,35 @@ def get_us_top30():
     except Exception:
         return "미국주식 TOP30 정보를 불러오지 못했습니다."
 
+# 일정 기능 (1개월치 경제 캘린더, 영문기반)
+def get_economic_calendar():
+    try:
+        url = "https://www.investing.com/economic-calendar/"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        soup = BeautifulSoup(r.text, "html.parser")
+        rows = soup.select("tr.js-event-item")
+        events = []
+        now = datetime.now()
+        one_month_later = now + timedelta(days=30)
+        for row in rows:
+            date_str = row.get("data-event-datetime", "")
+            if not date_str:
+                continue
+            event_dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            if event_dt < now or event_dt > one_month_later:
+                continue
+            country = row.get("data-country", "")
+            event = row.select_one(".event").get_text(strip=True)
+            impact = row.select_one(".sentiment")["title"] if row.select_one(".sentiment") else ""
+            events.append(f"{event_dt.strftime('%Y-%m-%d')} [{country}] {event} ({impact})")
+            if len(events) >= 10:  # 10개만 예시
+                break
+        if not events:
+            return "일정 정보를 찾을 수 없습니다."
+        return "📅 주요 경제 일정 (1개월)\n" + "\n".join(events)
+    except Exception:
+        return "일정 정보를 불러오지 못했습니다."
+
 def get_help():
     return (
         "📌 사용 가능한 명령어 목록\n\n"
@@ -237,6 +219,7 @@ def get_help():
         "✔️ 미국 주식: #TSLA\n"
         "✔️ 한국 주식 TOP30: /한국주식 TOP30\n"
         "✔️ 미국 주식 TOP30: /미국주식 TOP30\n"
+        "✔️ 일정(경제캘린더): /일정\n"
         "✔️ 차트 분석: !차트 BTC / @차트 삼성전자 / #차트 TSLA\n"
         "✔️ 명령어 안내: /명령어"
     )
@@ -248,29 +231,21 @@ def webhook():
 
     if utter == "/명령어":
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_help()}}]}})
-
+    if utter == "/일정":
+        return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_economic_calendar()}}]}})
     if utter.startswith("!차트") or utter.startswith("@차트") or utter.startswith("#차트"):
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": "[차트 분석 기능 구조만 제공] (실서비스 연동시 별도 분석 API 필요)"}}]}})
-
     if utter.startswith("!"):
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_coin_price(utter[1:])}}]}})
-
     if utter.startswith("@"):
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_korean_stock_price(utter[1:])}}]}})
-
     if utter.startswith("#"):
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_us_stock_price(utter[1:])}}]}})
-
     if utter == "/한국주식 TOP30":
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_korea_top30()}}]}})
-
     if utter == "/미국주식 TOP30":
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_us_top30()}}]}})
-
     return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": "[알림] 지원하지 않는 명령어입니다."}}]}})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
-except Exception as e:
-    print("초기화 중 에러 발생:", e)
