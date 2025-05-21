@@ -60,8 +60,11 @@ def get_coinone_korean_map():
         return {}
 
 # 서버 시작 시 한 번씩 캐싱
+print("업비트 매핑시도")
 UPBIT_KR_MAP = get_upbit_korean_map()
+print("빗썸 매핑시도")
 BITHUMB_KR_MAP = get_bithumb_korean_map()
+print("코인원 매핑시도")
 COINONE_KR_MAP = get_coinone_korean_map()
 
 def kr_to_symbol(name):
