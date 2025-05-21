@@ -1,6 +1,6 @@
-print("====== 서버 시작! ======")
-import sys
-sys.stdout.flush()
+try:
+    print("====== 서버 시작! ======")
+    # 이하 기존 코드
 
 from flask import Flask, request, jsonify
 import requests
@@ -272,6 +272,8 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+except Exception as e:
+    print("초기화 중 에러 발생:", e)
 
 print("====== app.run 직전! ======")
 sys.stdout.flush()
