@@ -1,12 +1,11 @@
-try:
-    print("====== 서버 시작! ======")
-    # 이하 기존 코드
-
 from flask import Flask, request, jsonify
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
+try:
+    print("====== 서버 시작! ======")
+    # 이하 기존 코드
 app = Flask(__name__)
 
 # 1. 업비트 코인명-심볼 자동매핑
@@ -272,8 +271,6 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
 except Exception as e:
     print("초기화 중 에러 발생:", e)
-
-print("====== app.run 직전! ======")
-sys.stdout.flush()
