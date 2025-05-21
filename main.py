@@ -1,3 +1,7 @@
+print("====== 서버 시작! ======")
+import sys
+sys.stdout.flush()
+
 from flask import Flask, request, jsonify
 import requests
 import yfinance as yf
@@ -265,3 +269,6 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
+print("====== app.run 직전! ======")
+sys.stdout.flush()
