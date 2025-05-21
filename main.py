@@ -10,15 +10,19 @@ app = Flask(__name__)
 def get_coingecko_kor_map():
     url = "https://api.coingecko.com/api/v3/coins/list?include_platform=false"
     r = requests.get(url)
-    data = r.json()
+    try:
+        data = r.json()
+    except Exception:
+        data = []
     kor_map = {}
     for c in data:
-        name = c.get('name', '').strip()
-        symbol = c.get('symbol', '').upper()
-        id = c.get('id', '').lower()
-        kor_map[name] = symbol
-        kor_map[symbol] = name
-        kor_map[id] = symbol
+        if isinstance(c, dict):
+            name = c.get('name', '').strip()
+            symbol = c.get('symbol', '').upper()
+            id = c.get('id', '').lower()
+            kor_map[name] = symbol
+            kor_map[symbol] = name
+            kor_map[id] = symbol
     return kor_map
 
 COINGECKO_KR_MAP = get_coingecko_kor_map()
