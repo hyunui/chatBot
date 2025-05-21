@@ -6,118 +6,111 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# 1. 코인게코 한글/영문/심볼/id 매핑
-def get_coingecko_kor_map():
+# CoinGecko 코인 한글/영문/심볼/ID 동적 매핑
+def get_coingecko_map():
     url = "https://api.coingecko.com/api/v3/coins/list?include_platform=false"
     try:
         data = requests.get(url).json()
     except Exception:
         data = []
-    kor_map = {}
+    name2id = {}
+    symbol2id = {}
+    id2name = {}
     for c in data:
-        if isinstance(c, dict):
-            name = c.get('name', '').strip()
-            symbol = c.get('symbol', '').upper()
-            id = c.get('id', '').lower()
-            kor_map[name] = symbol
-            kor_map[symbol] = name
-            kor_map[id] = symbol
-    return kor_map
+        name = c.get("name", "").strip()
+        symbol = c.get("symbol", "").upper()
+        cid = c.get("id", "")
+        # 한글이름 지원 여부 확인 후 매핑
+        name2id[name] = cid
+        symbol2id[symbol] = cid
+        id2name[cid] = name
+    return name2id, symbol2id, id2name
 
-COINGECKO_KR_MAP = get_coingecko_kor_map()
+def get_coin_id(query):
+    # 항상 최신 map을 바로 조회 (캐싱 X)
+    name2id, symbol2id, id2name = get_coingecko_map()
+    if not query.isascii():
+        return name2id.get(query, None)
+    query_up = query.upper()
+    if query_up in symbol2id:
+        return symbol2id[query_up]
+    # 영어로 검색 시 id로도 직접 매칭 시도
+    if query.lower() in id2name:
+        return query.lower()
+    return None
 
-def kr_to_symbol(name):
-    if not name.isascii():
-        return COINGECKO_KR_MAP.get(name, name.upper())
-    return name.upper()
+# 코인게코 실시간 시세
+def get_coingecko_price(coin_id):
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {"vs_currency": "usd", "ids": coin_id}
+    try:
+        data = requests.get(url, params=params, timeout=5).json()
+        if isinstance(data, list) and data:
+            return float(data[0].get("current_price", 0)), data[0].get("name", ""), data[0].get("symbol", "").upper()
+    except Exception:
+        pass
+    return None, None, None
 
-def symbol_to_kr(symbol):
-    return COINGECKO_KR_MAP.get(symbol.upper(), symbol.upper())
-
-# 환율
+# 환율 (네이버, 실패시 1400원)
 def get_exchange_rate():
     try:
         url = "https://search.naver.com/p/csearch/content/qapirender.nhn?key=calculator&pkid=141&q=환율&where=m&u1=keb&u3=USD&u4=KRW&u2=1"
-        data = requests.get(url).json()
+        data = requests.get(url, timeout=3).json()
         return float(data["country"][1]["value"].replace(",", ""))
     except Exception:
         return 1400.0
 
-# Binance 시세 조회 (글로벌)
-def get_binance_price(symbol):
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}USDT"
-        data = requests.get(url).json()
-        return float(data["price"])
-    except Exception:
-        return None
-
-# CoinGecko 시세 조회 (fallback)
-def get_coingecko_price(symbol):
-    try:
-        # 코인게코 symbol -> id 찾기
-        for k, v in COINGECKO_KR_MAP.items():
-            if v.lower() == symbol.lower():
-                id = k if k.isascii() is False else None
-                if id is None: continue
-                url = f"https://api.coingecko.com/api/v3/simple/price?ids={id}&vs_currencies=usd"
-                data = requests.get(url).json()
-                usd = data.get(id, {}).get('usd')
-                if usd:
-                    return float(usd)
-        return None
-    except Exception:
-        return None
-
-# 국내 거래소 시세
+# 업비트 시세
 def get_upbit_price(symbol):
     try:
-        symbol = symbol.upper()
-        resp = requests.get("https://api.upbit.com/v1/ticker?markets=KRW-" + symbol)
+        resp = requests.get(f"https://api.upbit.com/v1/ticker?markets=KRW-{symbol.upper()}", timeout=3)
         if resp.status_code == 200 and resp.json():
             return int(resp.json()[0]["trade_price"])
     except:
-        return None
+        pass
+    return None
 
+# 빗썸 시세
 def get_bithumb_price(symbol):
     try:
-        symbol = symbol.upper()
-        resp = requests.get(f"https://api.bithumb.com/public/ticker/{symbol}_KRW")
+        resp = requests.get(f"https://api.bithumb.com/public/ticker/{symbol.upper()}_KRW", timeout=3)
         data = resp.json()
         if data["status"] == "0000":
             return int(float(data["data"]["closing_price"]))
     except:
-        return None
+        pass
+    return None
 
+# 코인원 시세
 def get_coinone_price(symbol):
     try:
-        symbol = symbol.lower()
-        resp = requests.get(f"https://api.coinone.co.kr/ticker?currency={symbol}")
+        resp = requests.get(f"https://api.coinone.co.kr/ticker?currency={symbol.lower()}", timeout=3)
         data = resp.json()
         if data.get("last"):
             return int(float(data["last"]))
     except:
-        return None
+        pass
+    return None
 
 def get_korea_prices(symbol):
+    u = get_upbit_price(symbol)
+    b = get_bithumb_price(symbol)
+    c = get_coinone_price(symbol)
     return {
-        "upbit": get_upbit_price(symbol) or 0,
-        "bithumb": get_bithumb_price(symbol) or 0,
-        "coinone": get_coinone_price(symbol) or 0
+        "upbit": u if u else 0,
+        "bithumb": b if b else 0,
+        "coinone": c if c else 0
     }
 
-# 글로벌 + 국내 코인 시세, 김프계산, 한글/영문 자동 매핑
-def get_coin_price(symbol):
-    # 한글 자동 매핑
-    if not symbol.isascii():
-        symbol = kr_to_symbol(symbol)
-    krname = symbol_to_kr(symbol)
-    # 글로벌 가격 (1순위 Binance, 실패시 CoinGecko)
-    global_price = get_binance_price(symbol)
-    if not global_price:
-        global_price = get_coingecko_price(symbol)
+def get_coin_price(query):
+    coin_id = get_coin_id(query)
+    if not coin_id:
+        return f"[{query}] 지원하지 않는 코인입니다."
+
+    global_price, coin_name, symbol = get_coingecko_price(coin_id)
     ex = get_exchange_rate()
-    kr_prices = get_korea_prices(symbol)
+    kr_prices = get_korea_prices(symbol or query)
+
     if not global_price:
         global_str = "정보 없음"
         kimchi_str = "계산불가"
@@ -128,9 +121,8 @@ def get_coin_price(symbol):
             kimchi_str = f"{kimchi:+.2f}%"
         else:
             kimchi_str = "계산불가"
-
-    result = (
-        f"[{symbol.upper()}] {krname} 시세\n\n"
+    return (
+        f"[{symbol}] {coin_name or query} 시세\n\n"
         f"💰 글로벌 가격 → {global_str}\n\n"
         f"🇰🇷 국내 거래소 가격\n"
         f"- 업비트 → ₩{kr_prices['upbit']:,}\n"
@@ -138,9 +130,8 @@ def get_coin_price(symbol):
         f"- 코인원 → ₩{kr_prices['coinone']:,}\n\n"
         f"🧮 김치 프리미엄 → {kimchi_str}"
     )
-    return result
 
-# 한국주식, 미국주식, TOP30, 일정, 도움말 등 기존 기능 유지
+# 한국 주식 시세
 def get_korean_stock_price(query):
     try:
         url = f"https://finance.naver.com/search/searchList.naver?query={query}"
@@ -152,10 +143,16 @@ def get_korean_stock_price(query):
         r2 = requests.get(stock_url, headers={"User-Agent": "Mozilla/5.0"})
         soup2 = BeautifulSoup(r2.text, "html.parser")
         price = soup2.select_one("p.no_today span.blind").text
-        return f"[{query}] 주식 시세\n💰 현재 가격 → ₩{price}\n📊 거래대금 → 지원예정"
+        # 거래대금 크롤링
+        deal_amount = soup2.select_one("table.no_info td span.blind").text
+        volume_tag = soup2.select("table.no_info td span.blind")
+        # 일반적으로 [현재가, 전일대비, 거래량, 거래대금, ...] 구조이므로 거래대금은 4번째 또는 5번째에 위치
+        deal_amount = volume_tag[5].text if len(volume_tag) > 5 else "정보없음"
+        volume = volume_tag[3].text if len(volume_tag) > 3 else "정보없음"
+        return f"[{query}] 주식 시세\n💰 현재 가격 → ₩{price}\n📊 거래대금 → ₩{deal_amount}\n🔄 거래량 → {volume}"
     except Exception:
         return "한국 주식 정보를 가져올 수 없습니다."
-
+# 미국 주식 시세
 def get_us_stock_price(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -165,6 +162,7 @@ def get_us_stock_price(ticker):
     except Exception:
         return "미국 주식 정보를 가져올 수 없습니다."
 
+# 한국 주식 상승률 TOP30
 def get_korea_top30():
     try:
         url = "https://finance.naver.com/sise/sise_rise.naver"
@@ -183,6 +181,7 @@ def get_korea_top30():
     except Exception:
         return "한국주식 TOP30 정보를 불러오지 못했습니다."
 
+# 미국 주식 상승률 TOP30
 def get_us_top30():
     try:
         url = "https://finance.yahoo.com/screener/predefined/day_gainers"
@@ -202,6 +201,7 @@ def get_us_top30():
     except Exception:
         return "미국주식 TOP30 정보를 불러오지 못했습니다."
 
+# 경제일정 (1개월)
 def get_economic_calendar():
     try:
         url = "https://www.investing.com/economic-calendar/"
