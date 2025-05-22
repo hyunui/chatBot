@@ -300,14 +300,79 @@ def get_help():
         "✔️ 한국 주식 하락률: /한국주식 하락률\n"
         "✔️ 미국 주식 상승률: /미국주식 상승률\n"
         "✔️ 미국 주식 하락률: /미국주식 하락률\n"
+        "✔️ 주요 금융시장 지수: /지수\n"
         "✔️ 일정: /일정\n"
         "✔️ 명령어 안내: /명령어"
     )
+
+def get_market_indices():
+    try:
+        results = []
+
+        # 한국 코스피/코스닥 (네이버)
+        try:
+            url = "https://finance.naver.com/sise/"
+            r = requests.get(url, timeout=3)
+            soup = BeautifulSoup(r.text, "html.parser")
+            kospi = soup.select_one("#KOSPI_now").text.strip()
+            kospi_diff = soup.select_one("#KOSPI_change").text.strip()
+            kospi_rate = soup.select_one("#KOSPI_rate").text.strip()
+            kosdaq = soup.select_one("#KOSDAQ_now").text.strip()
+            kosdaq_diff = soup.select_one("#KOSDAQ_change").text.strip()
+            kosdaq_rate = soup.select_one("#KOSDAQ_rate").text.strip()
+            results.append(f"🇰🇷 한국\n- 코스피: {kospi} ({kospi_rate})\n- 코스닥: {kosdaq} ({kosdaq_rate})")
+        except Exception as e:
+            results.append("🇰🇷 한국\n- 코스피/코스닥 정보를 불러올 수 없습니다.")
+
+        # 미국 (야후파이낸스)
+        try:
+            indices = {
+                "다우존스": "^DJI",
+                "나스닥": "^IXIC",
+                "S&P500": "^GSPC"
+            }
+            us_lines = []
+            for name, ticker in indices.items():
+                stock = yf.Ticker(ticker)
+                price = stock.info["regularMarketPrice"]
+                change = stock.info["regularMarketChangePercent"]
+                sign = "+" if change >= 0 else ""
+                us_lines.append(f"- {name}: {price:,} ({sign}{change:.2f}%)")
+            results.append("🇺🇸 미국\n" + "\n".join(us_lines))
+        except Exception:
+            results.append("🇺🇸 미국\n- 미국 지수 정보를 불러올 수 없습니다.")
+
+        # 일본 니케이225 (야후파이낸스)
+        try:
+            stock = yf.Ticker("^N225")
+            price = stock.info["regularMarketPrice"]
+            change = stock.info["regularMarketChangePercent"]
+            sign = "+" if change >= 0 else ""
+            results.append(f"🇯🇵 일본\n- 니케이225: {price:,} ({sign}{change:.2f}%)")
+        except Exception:
+            results.append("🇯🇵 일본\n- 니케이225 정보를 불러올 수 없습니다.")
+
+        # 중국 상해종합 (야후파이낸스)
+        try:
+            stock = yf.Ticker("000001.SS")
+            price = stock.info["regularMarketPrice"]
+            change = stock.info["regularMarketChangePercent"]
+            sign = "+" if change >= 0 else ""
+            results.append(f"🇨🇳 중국\n- 상해종합: {price:,} ({sign}{change:.2f}%)")
+        except Exception:
+            results.append("🇨🇳 중국\n- 상해종합 정보를 불러올 수 없습니다.")
+
+        return "📈 주요 금융시장 지수\n\n" + "\n\n".join(results)
+    except Exception as e:
+        return f"지수 정보를 불러오지 못했습니다. 원인: {e}"
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     req = request.get_json()
     utter = req.get("userRequest", {}).get("utterance", "").strip()
+    if utter == "/지수":
+        return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_market_indices()}}]}})
     if utter == "/명령어":
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_help()}}]}})
     if utter == "/일정":
