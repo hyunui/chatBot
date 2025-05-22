@@ -287,41 +287,43 @@ def get_us_ranking(rise=True):
         return f"미국주식 정보를 불러오지 못했습니다. 원인: {e}"
 
 def get_economic_calendar():
+    from datetime import datetime
     try:
         url = "https://kr.investing.com/economic-calendar/"
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        r = requests.get(url, headers=headers, timeout=5)
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=6)
         if r.status_code != 200:
             return f"경제일정 사이트 접속 실패 (status:{r.status_code})"
-
         soup = BeautifulSoup(r.text, "html.parser")
-        events = []
 
+        events = []
         rows = soup.select("tr.js-event-item")
-        today = datetime.now()
-        this_month = today.month
+        now = datetime.now()
+        month = now.month
 
         for row in rows:
-            # 날짜 정보
-            date_text = row.get("data-event-datetime", "")
-            if not date_text:
+            # 날짜
+            date_str = row.get("data-event-datetime", "")
+            if not date_str:
+                continue
+            event_dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            if event_dt.month != month:
                 continue
 
-            event_dt = datetime.strptime(date_text, "%Y-%m-%d %H:%M:%S")
-            if event_dt.month != this_month:
-                continue  # 이번 달 이벤트만 추출
-
-            # 중요도 확인 (불꽃 아이콘 개수)
+            # 중요도 체크 (불꽃 세 개 이상)
             impact = len(row.select(".grayFullBullishIcon"))
             if impact < 3:
-                continue  # 중요도 3 미만 이벤트는 제외
+                continue
 
-            country = row.select_one(".flagCur span").get_text(strip=True)
-            event = row.select_one(".event").get_text(strip=True)
-            time_str = event_dt.strftime("%m월 %d일")
-            events.append(f"{time_str} [{country}] {event} (★★★)")
+            country = row.select_one(".flagCur span")
+            event = row.select_one(".event")
+            if not country or not event:
+                continue
+
+            country = country.get_text(strip=True)
+            event = event.get_text(strip=True)
+            date_fmt = event_dt.strftime("%m월 %d일")
+            events.append(f"{date_fmt} [{country}] {event} (★★★)")
 
             if len(events) >= 10:
                 break
