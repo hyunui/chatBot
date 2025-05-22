@@ -15,14 +15,19 @@ def get_upbit_symbol_map():
             return {}
         markets = r.json()
         name2symbol = {}
+        # 우선 KRW-마켓 우선 등록
         for m in markets:
             if m["market"].startswith("KRW-"):
                 symbol = m["market"].replace("KRW-", "")
                 name2symbol[m["korean_name"]] = symbol
-                name2symbol[symbol] = m["korean_name"]
+        # 없으면 BTC/USDT 마켓에서 보조 등록
+        for m in markets:
+            if m["korean_name"] not in name2symbol:
+                symbol = m["market"].split("-")[1]
+                name2symbol[m["korean_name"]] = symbol
         return name2symbol
     except Exception as e:
-        print(f"Upbit Symbol Map Error: {e}")
+        print(f"Upbit Symbol Map Error (Preferred): {e}")
         return {}
 
 UPBIT_MAP = get_upbit_symbol_map()
