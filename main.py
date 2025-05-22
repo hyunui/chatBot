@@ -146,37 +146,42 @@ def get_coin_price(query):
     except Exception as e:
         return f"코인 시세 조회 중 오류 발생: {e}"
 
-# 한국 주식 (다음금융) - 상세원인 안내
 def get_korean_stock_price(query):
     try:
+        # 네이버 종목명 → 코드 추출
         headers = {
-            "User-Agent": "Mozilla/5.0",
-            "referer": "https://finance.daum.net/",
+            "User-Agent": "Mozilla/5.0"
         }
-        search_url = f"https://search.daum.net/search?w=tot&q={query}+주식"
+        search_url = f"https://finance.naver.com/search/search.naver?query={query}"
         r = requests.get(search_url, headers=headers, timeout=3)
-        if r.status_code != 200:
-            return f"{query} : 다음 검색 접속 실패 (status:{r.status_code})"
         soup = BeautifulSoup(r.text, "html.parser")
-        link = soup.select_one('a[href*="finance.daum.net/quotes/A"]')
+        # 첫 번째 종목코드 추출 (검색결과 표에서)
+        link = soup.select_one('a[href*="/item/main.naver?code="]')
         if not link:
-            return f"{query} : 종목코드 미발견 (검색결과 없음/크롤링실패)"
+            return f"{query} : 종목코드를 찾을 수 없습니다."
         href = link["href"]
-        code = href.split("/A")[-1].split("?")[0]
+        code = href.split("code=")[-1]
+        name = link.text.strip()
 
-        info_url = f"https://finance.daum.net/api/quotes/A{code}?summary=false"
-        resp = requests.get(info_url, headers=headers, timeout=3)
-        if resp.status_code != 200:
-            return f"{query} : 다음금융 API 접속 실패 (status:{resp.status_code})"
-        data = resp.json()
-        price = data.get("tradePrice")
-        volume = data.get("tradeVolume")  # 거래량(주식 수)
-        change = data.get("changeRate")
-        name = data.get("name", query)
-        if price is None or change is None:
-            return f"{query}: 정보 파싱 에러 (가격 또는 변동률 없음)"
-        sign = "+" if change >= 0 else ""
-        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
+        # 종목 시세 정보 가져오기
+        info_url = f"https://finance.naver.com/item/main.naver?code={code}"
+        r2 = requests.get(info_url, headers=headers, timeout=3)
+        soup2 = BeautifulSoup(r2.text, "html.parser")
+        price = soup2.select_one("p.no_today span.blind").text.replace(',', '')
+        change = soup2.select_one("p.no_exday span.blind").text.replace(',', '')
+        change_rate = soup2.select_one("p.no_exday em span.blind").text
+
+        # 거래량
+        volume = ""
+        for th in soup2.select("table.no_info th"):
+            if "거래량" in th.text:
+                td = th.find_next("td")
+                if td:
+                    volume = td.text.strip().replace(',', '')
+                break
+
+        sign = "+" if '-' not in change_rate else ""
+        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{int(price):,} ({sign}{change_rate})\n📊 거래량 → {volume}주"
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
