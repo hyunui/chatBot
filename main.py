@@ -149,21 +149,44 @@ def get_korea_top30():
 def get_us_top30():
     try:
         url = "https://finance.yahoo.com/screener/predefined/day_gainers"
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        r = requests.get(url, headers=headers)
         soup = BeautifulSoup(r.text, "html.parser")
-        trs = soup.select('table tr[data-row]')
+        # 실제로는 테이블이 자바스크립트로 동적으로 만들어지기 때문에
+        # 표 파싱이 실패할 경우 fallback으로 json 데이터 요청을 시도
+        rows = []
+        table = soup.find("table")
+        if table:
+            rows = table.find("tbody").find_all("tr")
         top = []
-        for tr in trs[:30]:
+        for idx, tr in enumerate(rows[:30]):
             tds = tr.find_all("td")
             if len(tds) < 6:
                 continue
-            name = tds[1].get_text(strip=True)
             symbol = tds[0].get_text(strip=True)
+            name = tds[1].get_text(strip=True)
             rate = tds[4].get_text(strip=True)
-            top.append(f"{len(top)+1}. {name} ({symbol}) ({rate})")
+            top.append(f"{idx+1}. {name} ({symbol}) ({rate})")
+        # fallback (실패시)
+        if not top:
+            # Yahoo 파이낸스 API의 json url (비공식)
+            screener_url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?count=30&scrIds=day_gainers"
+            resp = requests.get(screener_url, headers=headers)
+            js = resp.json()
+            items = js["finance"]["result"][0]["quotes"]
+            for idx, item in enumerate(items):
+                symbol = item.get("symbol", "")
+                name = item.get("shortName", "") or item.get("longName", "")
+                rate = f'{item.get("regularMarketChangePercent", 0):+.2f}%'
+                top.append(f"{idx+1}. {name} ({symbol}) ({rate})")
+        if not top:
+            return "미국주식 TOP30 정보를 불러오지 못했습니다."
         return "📈 미국주식 상승률 TOP30\n" + "\n".join(top)
-    except:
-        return "미국주식 TOP30 정보를 불러오지 못했습니다."
+    except Exception as e:
+        return f"미국주식 TOP30 정보를 불러오지 못했습니다.\n오류: {e}"
 
 # 경제일정
 def get_economic_calendar():
