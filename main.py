@@ -122,15 +122,21 @@ def get_coin_price(query):
         if err2: error_msgs.append(f"업비트: {err2}")
         if err3: error_msgs.append(f"빗썸: {err3}")
 
-        if not global_price:
+        # 글로벌 가격(달러)을 원화로 환산
+        if global_price:
+            global_price_krw = global_price * krw_usd
+        else:
+            global_price_krw = None
+    
+        if not global_price_krw:
             global_str = "정보 없음"
             global_rate = ""
             kimchi_str = "계산불가"
         else:
-            global_str = f"₩{int(global_price):,}"
+            global_str = f"₩{int(global_price_krw):,}"
             global_rate = f" ({global_change:+.2f}%)"
             if upbit:
-                kimchi = ((upbit - global_price) / global_price) * 100
+                kimchi = ((upbit - global_price_krw) / global_price_krw) * 100
                 kimchi_str = f"{kimchi:+.2f}%"
             else:
                 kimchi_str = "계산불가"
