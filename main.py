@@ -3,6 +3,7 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import json
 
 app = Flask(__name__)
 
@@ -191,29 +192,37 @@ def get_us_top30():
 # 경제일정
 def get_economic_calendar():
     try:
-        url = "https://www.investing.com/economic-calendar/"
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(r.text, "html.parser")
-        rows = soup.select("tr.js-event-item")
-        events = []
+        url = "https://www.investing.com/economic-calendar/Service/getCalendarFilteredData"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest"
+        }
+        # 오늘 ~ 한달 뒤
         now = datetime.now()
-        one_month_later = now + timedelta(days=30)
-        for row in rows:
-            date_str = row.get("data-event-datetime", "")
-            if not date_str:
-                continue
-            event_dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-            if event_dt < now or event_dt > one_month_later:
-                continue
-            country = row.get("data-country", "")
-            event = row.select_one(".event").get_text(strip=True)
-            impact = row.select_one(".sentiment")["title"] if row.select_one(".sentiment") else ""
-            events.append(f"{event_dt.strftime('%Y-%m-%d')} [{country}] {event} ({impact})")
-            if len(events) >= 10:
-                break
-        return "📅 주요 경제 일정\n" + "\n".join(events)
-    except:
-        return "일정 정보를 불러오지 못했습니다."
+        end = now + timedelta(days=30)
+        data = {
+            "dateFrom": now.strftime("%Y-%m-%d"),
+            "dateTo": end.strftime("%Y-%m-%d"),
+            "timezone": "Asia/Seoul",
+            "limit_from": 0
+        }
+        # Investing.com은 POST 요청, form-data
+        resp = requests.post(url, headers=headers, data=data)
+        events = []
+        resp_json = resp.json()
+        for item in resp_json['data'][:10]:  # 상위 10개만 예시
+            date_str = item.get("date", "")
+            time_str = item.get("time", "")
+            event = item.get("event", "")
+            country = item.get("country", "")
+            impact = item.get("importance", "")
+            events.append(f"{date_str} [{country}] {event} ({impact})")
+        if not events:
+            return "일정 정보를 찾을 수 없습니다."
+        return "📅 주요 경제 일정 (1개월)\n" + "\n".join(events)
+    except Exception as e:
+        return f"일정 정보를 불러오지 못했습니다.\n오류: {e}"
 
 # 명령어 안내
 def get_help():
