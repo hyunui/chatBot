@@ -141,11 +141,12 @@ def get_korea_top30():
                 continue
             name = tds[1].get_text(strip=True)
             rate = tds[2].get_text(strip=True)
+            if rate == "": rate = tds[3].get_text(strip=True)  # 혹시 rate가 빈칸이면 다음 컬럼에서 찾아줌
             top.append(f"{len(top)+1}. {name} ({rate})")
         return "📈 한국주식 상승률 TOP30\n" + "\n".join(top)
-    except:
-        return "한국주식 TOP30 정보를 불러오지 못했습니다."
-
+    except Exception as e:
+        return f"한국주식 TOP30 정보를 불러오지 못했습니다.\n오류: {e}"
+        
 # 미국주식 TOP30
 def get_us_top30():
     try:
@@ -156,8 +157,6 @@ def get_us_top30():
         }
         r = requests.get(url, headers=headers)
         soup = BeautifulSoup(r.text, "html.parser")
-        # 실제로는 테이블이 자바스크립트로 동적으로 만들어지기 때문에
-        # 표 파싱이 실패할 경우 fallback으로 json 데이터 요청을 시도
         rows = []
         table = soup.find("table")
         if table:
@@ -173,7 +172,6 @@ def get_us_top30():
             top.append(f"{idx+1}. {name} ({symbol}) ({rate})")
         # fallback (실패시)
         if not top:
-            # Yahoo 파이낸스 API의 json url (비공식)
             screener_url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?count=30&scrIds=day_gainers"
             resp = requests.get(screener_url, headers=headers)
             js = resp.json()
