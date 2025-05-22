@@ -144,40 +144,28 @@ def get_coin_price(query):
 
 def get_korean_stock_price(query):
     try:
-        # 네이버 종목명 → 코드 추출
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        search_url = f"https://finance.naver.com/search/search.naver?query={query}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        # 다음금융 종목 검색 API
+        search_url = f"https://finance.daum.net/api/search?q={query}"
         r = requests.get(search_url, headers=headers, timeout=3)
-        soup = BeautifulSoup(r.text, "html.parser")
-        # 첫 번째 종목코드 추출 (검색결과 표에서)
-        link = soup.select_one('a[href*="/item/main.naver?code="]')
-        if not link:
+        js = r.json()
+        # 첫 종목코드 추출
+        items = js.get("searchCommon", [])
+        if not items:
             return f"{query} : 종목코드를 찾을 수 없습니다."
-        href = link["href"]
-        code = href.split("code=")[-1]
-        name = link.text.strip()
-
-        # 종목 시세 정보 가져오기
-        info_url = f"https://finance.naver.com/item/main.naver?code={code}"
+        code = items[0]["code"]
+        name = items[0]["name"]
+        # 종목 상세 시세
+        info_url = f"https://finance.daum.net/api/quotes/A{code}?summary=false"
         r2 = requests.get(info_url, headers=headers, timeout=3)
-        soup2 = BeautifulSoup(r2.text, "html.parser")
-        price = soup2.select_one("p.no_today span.blind").text.replace(',', '')
-        change = soup2.select_one("p.no_exday span.blind").text.replace(',', '')
-        change_rate = soup2.select_one("p.no_exday em span.blind").text
-
-        # 거래량
-        volume = ""
-        for th in soup2.select("table.no_info th"):
-            if "거래량" in th.text:
-                td = th.find_next("td")
-                if td:
-                    volume = td.text.strip().replace(',', '')
-                break
-
-        sign = "+" if '-' not in change_rate else ""
-        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{int(price):,} ({sign}{change_rate})\n📊 거래량 → {volume}주"
+        data = r2.json()
+        price = data.get("tradePrice")
+        change = data.get("changeRate")
+        volume = data.get("tradeVolume")
+        sign = "+" if change and change >= 0 else ""
+        if not price:
+            return f"{name}: 시세 정보를 찾을 수 없습니다."
+        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
