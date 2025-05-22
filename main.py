@@ -15,49 +15,39 @@ def get_upbit_symbol_map():
             return {}
         markets = r.json()
         name2symbol = {}
-        # 우선 KRW-마켓 우선 등록
         for m in markets:
             if m["market"].startswith("KRW-"):
                 symbol = m["market"].replace("KRW-", "")
                 name2symbol[m["korean_name"]] = symbol
-        # 없으면 BTC/USDT 마켓에서 보조 등록
-        for m in markets:
-            if m["korean_name"] not in name2symbol:
-                symbol = m["market"].split("-")[1]
-                name2symbol[m["korean_name"]] = symbol
+                name2symbol[symbol] = m["korean_name"]
         return name2symbol
     except Exception as e:
-        print(f"Upbit Symbol Map Error (Preferred): {e}")
+        print(f"Upbit Symbol Map Error: {e}")
         return {}
 
 UPBIT_MAP = get_upbit_symbol_map()
 
 def get_symbol_by_korean_name(name):
     global UPBIT_MAP
-    # 맵이 비어있으면 재로딩
     if not UPBIT_MAP:
         UPBIT_MAP = get_upbit_symbol_map()
     return UPBIT_MAP.get(name)
 
-# OKX 시세+변동률
-def get_okx_price_and_change(symbol):
+# 바이낸스 글로벌 시세 (GET 방식)
+def get_binance_price_and_change(symbol):
     try:
-        # OKX 심볼 포맷: BTC-USDT, ETH-USDT
-        inst_id = f"{symbol.upper()}-USDT"
-        url = f"https://www.okx.com/api/v5/market/ticker?instId={inst_id}"
+        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol.upper()}USDT"
         r = requests.get(url, timeout=3)
+        if r.status_code == 451:
+            return None, None, "Binance API 국가 차단 (451)"
         if r.status_code != 200:
-            return None, None, f"OKX API 접속 실패 (status:{r.status_code})"
-        js = r.json()
-        if not js.get("data"):
-            return None, None, "OKX 데이터 없음"
-        ticker = js["data"][0]
-        price = float(ticker["last"])
-        open24h = float(ticker["open24h"])
-        change = ((price - open24h) / open24h) * 100 if open24h else 0
+            return None, None, f"Binance API 접속 실패 (status:{r.status_code})"
+        data = r.json()
+        price = float(data["lastPrice"])
+        change = float(data["priceChangePercent"])
         return price, change, None
     except Exception as e:
-        return None, None, f"OKX 시세 에러: {e}"
+        return None, None, f"Binance API 에러: {e}"
 
 def get_upbit_price_and_change(symbol):
     try:
@@ -99,14 +89,13 @@ def get_exchange_rate():
 
 def get_coin_price(query):
     try:
-        # 소문자로 들어와도 자동으로 대문자로 변환
         query = query.strip()
         is_korean = not query.isascii()
         symbol = query.upper()
         kr_name = query
-
         error_msgs = []
 
+        # 한글이면 업비트에서 심볼 변환
         if is_korean:
             symbol = get_symbol_by_korean_name(query)
             if not symbol:
@@ -114,8 +103,8 @@ def get_coin_price(query):
         else:
             symbol = symbol.upper()
 
-        # 이하 로직 동일 ...
-        global_price, global_change, err1 = get_okx_price_and_change(symbol)
+        # 바이낸스에서 시세 및 변동률 GET
+        global_price, global_change, err1 = get_binance_price_and_change(symbol)
         upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
         bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
         ex, err4 = get_exchange_rate()
