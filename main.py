@@ -198,7 +198,6 @@ def get_economic_calendar():
             "Content-Type": "application/x-www-form-urlencoded",
             "X-Requested-With": "XMLHttpRequest"
         }
-        # 오늘 ~ 한달 뒤
         now = datetime.now()
         end = now + timedelta(days=30)
         data = {
@@ -207,17 +206,23 @@ def get_economic_calendar():
             "timezone": "Asia/Seoul",
             "limit_from": 0
         }
-        # Investing.com은 POST 요청, form-data
         resp = requests.post(url, headers=headers, data=data)
-        events = []
         resp_json = resp.json()
-        for item in resp_json['data'][:10]:  # 상위 10개만 예시
-            date_str = item.get("date", "")
-            time_str = item.get("time", "")
-            event = item.get("event", "")
-            country = item.get("country", "")
-            impact = item.get("importance", "")
-            events.append(f"{date_str} [{country}] {event} ({impact})")
+
+        # 안전하게 data 파싱
+        events = []
+        data_list = resp_json.get('data', [])
+        if isinstance(data_list, list):
+            for item in data_list[:10]:
+                date_str = item.get("date", "")
+                time_str = item.get("time", "")
+                event = item.get("event", "")
+                country = item.get("country", "")
+                impact = item.get("importance", "")
+                events.append(f"{date_str} [{country}] {event} ({impact})")
+        else:
+            return "일정 데이터를 파싱할 수 없습니다. 잠시 후 다시 시도해 주세요."
+
         if not events:
             return "일정 정보를 찾을 수 없습니다."
         return "📅 주요 경제 일정 (1개월)\n" + "\n".join(events)
