@@ -1,12 +1,16 @@
 from flask import Flask, request, jsonify
 import requests
 import yfinance as yf
+from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import os
+import json
 
 app = Flask(__name__)
 
-CMC_API_KEY = "f8a44267-af9f-470e-8848-9b952cd23b53"
+load_dotenv()
+CMC_API_KEY = os.environ.get("CMC_API_KEY")
 
 def get_upbit_symbol_map():
     try:
