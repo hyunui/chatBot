@@ -37,20 +37,22 @@ def get_symbol_by_korean_name(name):
 # OKX 시세+변동률
 def get_okx_price_and_change(symbol):
     try:
+        # OKX 심볼 포맷: BTC-USDT, ETH-USDT
         inst_id = f"{symbol.upper()}-USDT"
         url = f"https://www.okx.com/api/v5/market/ticker?instId={inst_id}"
         r = requests.get(url, timeout=3)
         if r.status_code != 200:
             return None, None, f"OKX API 접속 실패 (status:{r.status_code})"
-        data = r.json()
-        if not data.get("data"):
+        js = r.json()
+        if not js.get("data"):
             return None, None, "OKX 데이터 없음"
-        item = data["data"][0]
-        price = float(item["last"])
-        change = float(item["chgPct"])
+        ticker = js["data"][0]
+        price = float(ticker["last"])
+        open24h = float(ticker["open24h"])
+        change = ((price - open24h) / open24h) * 100 if open24h else 0
         return price, change, None
     except Exception as e:
-        return None, None, f"OKX API 에러: {e}"
+        return None, None, f"OKX 시세 에러: {e}"
 
 def get_upbit_price_and_change(symbol):
     try:
