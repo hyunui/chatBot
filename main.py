@@ -108,7 +108,7 @@ def get_coin_price(query):
             symbol = symbol.upper()
 
         # 이하 로직 동일 ...
-        global_price, global_change, err1 = get_binance_price_and_change(symbol)
+        global_price, global_change, err1 = get_okx_price_and_change(symbol)
         upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
         bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
         ex, err4 = get_exchange_rate()
