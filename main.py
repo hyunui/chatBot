@@ -34,39 +34,46 @@ def get_symbol_by_korean_name(name):
         UPBIT_MAP = get_upbit_symbol_map()
     return UPBIT_MAP.get(name)
 
-def get_binance_price(symbol):
+# 코인 시세 + 상승률
+def get_binance_price_and_change(symbol):
     try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}USDT"
+        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol.upper()}USDT"
         r = requests.get(url, timeout=3)
         if r.status_code != 200:
-            return None, f"Binance API 접속 실패 (status:{r.status_code})"
+            return None, None, f"Binance API 접속 실패 (status:{r.status_code})"
         data = r.json()
-        return float(data["price"]), None
+        price = float(data["lastPrice"])
+        change = float(data["priceChangePercent"])  # 24h 변동률(%)
+        return price, change, None
     except Exception as e:
-        return None, f"Binance API 에러: {e}"
+        return None, None, f"Binance API 에러: {e}"
 
-def get_upbit_price(symbol):
+def get_upbit_price_and_change(symbol):
     try:
         r = requests.get(f"https://api.upbit.com/v1/ticker?markets=KRW-{symbol.upper()}", timeout=3)
         if r.status_code != 200:
-            return None, f"Upbit API 접속 실패 (status:{r.status_code})"
-        data = r.json()
-        return int(data[0]["trade_price"]), None
+            return None, None, f"Upbit API 접속 실패 (status:{r.status_code})"
+        data = r.json()[0]
+        price = int(data["trade_price"])
+        change = float(data.get("signed_change_rate", 0)) * 100
+        return price, change, None
     except Exception as e:
-        return None, f"Upbit 시세 에러: {e}"
+        return None, None, f"Upbit 시세 에러: {e}"
 
-def get_bithumb_price(symbol):
+def get_bithumb_price_and_change(symbol):
     try:
         r = requests.get(f"https://api.bithumb.com/public/ticker/{symbol.upper()}_KRW", timeout=3)
         if r.status_code != 200:
-            return None, f"Bithumb API 접속 실패 (status:{r.status_code})"
+            return None, None, f"Bithumb API 접속 실패 (status:{r.status_code})"
         data = r.json()
         if data["status"] == "0000":
-            return int(float(data["data"]["closing_price"])), None
+            price = int(float(data["data"]["closing_price"]))
+            change = float(data["data"].get("fluctate_rate_24H", 0))
+            return price, change, None
         else:
-            return None, f"Bithumb 데이터 없음"
+            return None, None, f"Bithumb 데이터 없음"
     except Exception as e:
-        return None, f"Bithumb 시세 에러: {e}"
+        return None, None, f"Bithumb 시세 에러: {e}"
 
 def get_exchange_rate():
     try:
@@ -81,19 +88,25 @@ def get_exchange_rate():
 
 def get_coin_price(query):
     try:
+        # 소문자로 들어와도 자동으로 대문자로 변환
+        query = query.strip()
         is_korean = not query.isascii()
         symbol = query.upper()
         kr_name = query
+
         error_msgs = []
 
         if is_korean:
             symbol = get_symbol_by_korean_name(query)
             if not symbol:
                 return f"[{query}] 코인없음 (국내 거래소에 존재하지 않음)"
+        else:
+            symbol = symbol.upper()
 
-        global_price, err1 = get_binance_price(symbol)
-        upbit, err2 = get_upbit_price(symbol)
-        bithumb, err3 = get_bithumb_price(symbol)
+        # 이하 로직 동일 ...
+        global_price, global_change, err1 = get_binance_price_and_change(symbol)
+        upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
+        bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
         ex, err4 = get_exchange_rate()
 
         if err1: error_msgs.append(f"글로벌가격: {err1}")
@@ -103,9 +116,11 @@ def get_coin_price(query):
 
         if not global_price:
             global_str = "정보 없음"
+            global_rate = ""
             kimchi_str = "계산불가"
         else:
             global_str = f"${global_price:,.2f}"
+            global_rate = f" ({global_change:+.2f}%)"
             if upbit:
                 kimchi = ((upbit - global_price * ex) / (global_price * ex)) * 100
                 kimchi_str = f"{kimchi:+.2f}%"
@@ -114,10 +129,10 @@ def get_coin_price(query):
 
         result = f"""[{symbol}] {kr_name} 시세
 
-💰 글로벌 가격 → {global_str}
+💰 글로벌 가격 → {global_str}{global_rate}
 🇰🇷 국내 거래소 가격
-- 업비트 → {f'₩{upbit:,}' if upbit else '정보 없음'}
-- 빗썸 → {f'₩{bithumb:,}' if bithumb else '정보 없음'}
+- 업비트 → {f'₩{upbit:,} ({upbit_change:+.2f}%)' if upbit else '정보 없음'}
+- 빗썸 → {f'₩{bithumb:,} ({bithumb_change:+.2f}%)' if bithumb else '정보 없음'}
 
 🧮 김치 프리미엄 → {kimchi_str}"""
 
@@ -127,7 +142,7 @@ def get_coin_price(query):
     except Exception as e:
         return f"코인 시세 조회 중 오류 발생: {e}"
 
-# 한국 주식 (다음금융)
+# 한국 주식 (다음금융) - 상세원인 안내
 def get_korean_stock_price(query):
     try:
         headers = {
@@ -136,24 +151,28 @@ def get_korean_stock_price(query):
         }
         search_url = f"https://search.daum.net/search?w=tot&q={query}+주식"
         r = requests.get(search_url, headers=headers, timeout=3)
+        if r.status_code != 200:
+            return f"{query} : 다음 검색 접속 실패 (status:{r.status_code})"
         soup = BeautifulSoup(r.text, "html.parser")
         link = soup.select_one('a[href*="finance.daum.net/quotes/A"]')
         if not link:
-            return f"{query} : 종목 코드를 찾을 수 없습니다."
+            return f"{query} : 종목코드 미발견 (검색결과 없음/크롤링실패)"
         href = link["href"]
         code = href.split("/A")[-1].split("?")[0]
 
         info_url = f"https://finance.daum.net/api/quotes/A{code}?summary=false"
         resp = requests.get(info_url, headers=headers, timeout=3)
         if resp.status_code != 200:
-            return f"다음금융 API 접속 실패 (status:{resp.status_code})"
+            return f"{query} : 다음금융 API 접속 실패 (status:{resp.status_code})"
         data = resp.json()
         price = data.get("tradePrice")
         volume = data.get("tradeVolume")  # 거래량(주식 수)
+        change = data.get("changeRate")
         name = data.get("name", query)
-        if not price:
-            return f"{query}: 가격 정보를 찾을 수 없습니다."
-        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,}\n📊 거래량 → {volume:,}주"
+        if price is None or change is None:
+            return f"{query}: 정보 파싱 에러 (가격 또는 변동률 없음)"
+        sign = "+" if change >= 0 else ""
+        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
@@ -161,8 +180,13 @@ def get_us_stock_price(ticker):
     try:
         stock = yf.Ticker(ticker)
         price = stock.info["regularMarketPrice"]
+        prev = stock.info.get("regularMarketPreviousClose", 0)
         volume = stock.info.get("volume", 0)
-        return f"[{ticker}] 주식 시세\n💰 현재 가격 → ${price:,}\n📊 거래량 → {volume:,}주"
+        if price is None or prev is None:
+            return f"{ticker}: 시세/변동률 정보 없음"
+        change = ((price - prev) / prev * 100) if prev else 0
+        sign = "+" if change >= 0 else ""
+        return f"[{ticker}] 주식 시세\n💰 현재 가격 → ${price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
     except Exception as e:
         return f"미국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
