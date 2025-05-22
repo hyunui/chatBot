@@ -28,6 +28,10 @@ def get_upbit_symbol_map():
 UPBIT_MAP = get_upbit_symbol_map()
 
 def get_symbol_by_korean_name(name):
+    global UPBIT_MAP
+    # 맵이 비어있으면 재로딩
+    if not UPBIT_MAP:
+        UPBIT_MAP = get_upbit_symbol_map()
     return UPBIT_MAP.get(name)
 
 def get_binance_price(symbol):
