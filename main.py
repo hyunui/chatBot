@@ -11,7 +11,7 @@ app = Flask(__name__)
 def get_upbit_symbol_map():
     try:
         url = "https://api.upbit.com/v1/market/all"
-        markets = requests.get(url).json()
+        markets = requests.get(url, timeout=5).json()
         name2symbol = {}
         for m in markets:
             if m["market"].startswith("KRW-"):
@@ -19,7 +19,8 @@ def get_upbit_symbol_map():
                 name2symbol[m["korean_name"]] = symbol
                 name2symbol[symbol] = m["korean_name"]
         return name2symbol
-    except:
+    except Exception as e:
+        print(f"[업비트 심볼맵] API 접근 실패: {e}")
         return {}
 
 UPBIT_MAP = get_upbit_symbol_map()
@@ -28,37 +29,41 @@ UPBIT_MAP = get_upbit_symbol_map()
 def get_binance_price(symbol):
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}USDT"
-        data = requests.get(url).json()
+        data = requests.get(url, timeout=5).json()
         return float(data["price"])
-    except:
+    except Exception as e:
+        print(f"[바이낸스] API 접근 실패: {e}")
         return None
 
 # 업비트 가격
 def get_upbit_price(symbol):
     try:
-        resp = requests.get(f"https://api.upbit.com/v1/ticker?markets=KRW-{symbol.upper()}")
+        resp = requests.get(f"https://api.upbit.com/v1/ticker?markets=KRW-{symbol.upper()}", timeout=5)
         data = resp.json()
         return int(data[0]["trade_price"])
-    except:
+    except Exception as e:
+        print(f"[업비트 가격] API 접근 실패: {e}")
         return None
 
 # 빗썸 가격
 def get_bithumb_price(symbol):
     try:
-        resp = requests.get(f"https://api.bithumb.com/public/ticker/{symbol.upper()}_KRW")
+        resp = requests.get(f"https://api.bithumb.com/public/ticker/{symbol.upper()}_KRW", timeout=5)
         data = resp.json()
         if data["status"] == "0000":
             return int(float(data["data"]["closing_price"]))
-    except:
+    except Exception as e:
+        print(f"[빗썸 가격] API 접근 실패: {e}")
         return None
 
 # 환율 (네이버)
 def get_exchange_rate():
     try:
         url = "https://search.naver.com/p/csearch/content/qapirender.nhn?key=calculator&pkid=141&q=환율&where=m&u1=keb&u3=USD&u4=KRW&u2=1"
-        data = requests.get(url).json()
+        data = requests.get(url, timeout=5).json()
         return float(data["country"][1]["value"].replace(",", ""))
-    except:
+    except Exception as e:
+        print(f"[환율] API 접근 실패: {e}")
         return 1400.0
 
 # 코인 시세 통합
@@ -71,51 +76,51 @@ def get_coin_price(query):
         if is_korean:
             symbol = UPBIT_MAP.get(query)
             if not symbol:
-                return f"[{query}] 코인없음"
+                return f"[{query}] 코인없음\n⚠️ 국내 거래소 심볼 매핑 실패(API 접근 실패/미상장/네트워크 문제)"
 
         global_price = get_binance_price(symbol)
         upbit = get_upbit_price(symbol)
         bithumb = get_bithumb_price(symbol)
         coinone = 0  # 생략됨
 
-        if not global_price:
-            global_str = "정보 없음"
-            kimchi_str = "계산불가"
+        if global_price is None:
+            return f"[{symbol}] {kr_name} 시세\n\n⚠️ 글로벌 시세 API 접근 실패 또는 차단됨 (서버 환경/네트워크를 점검하세요)"
+
+        global_str = f"${global_price:,.2f}"
+        ex = get_exchange_rate()
+        if upbit:
+            kimchi = ((upbit - global_price * ex) / (global_price * ex)) * 100
+            kimchi_str = f"{kimchi:+.2f}%"
         else:
-            global_str = f"${global_price:,.2f}"
-            ex = get_exchange_rate()
-            if upbit:
-                kimchi = ((upbit - global_price * ex) / (global_price * ex)) * 100
-                kimchi_str = f"{kimchi:+.2f}%"
-            else:
-                kimchi_str = "계산불가"
+            kimchi_str = "계산불가"
 
         return f"""[{symbol}] {kr_name} 시세
 
 💰 글로벌 가격 → {global_str}
 🇰🇷 국내 거래소 가격
-- 업비트 → ₩{upbit:,}""" + (f"\n- 빗썸 → ₩{bithumb:,}" if bithumb else "") + f"""
+- 업비트 → {f"₩{upbit:,}" if upbit else 'API 접근 실패/미상장'}
+- 빗썸 → {f"₩{bithumb:,}" if bithumb else 'API 접근 실패/미상장'}
 
 🧮 김치 프리미엄 → {kimchi_str}"""
     except Exception as e:
-        return f"오류: {e}"
+        return f"코인 시세 조회 중 오류: {e}\n⚠️ API 접근 실패 또는 네트워크/서버 오류"
 
 # 한국 주식
 def get_korean_stock_price(query):
     try:
         url = f"https://finance.naver.com/search/searchList.naver?query={query}"
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         soup = BeautifulSoup(r.text, "html.parser")
         href = soup.select_one(".section_search .tbl_search td a")["href"]
         code = href.split('=')[-1]
         stock_url = f"https://finance.naver.com/item/main.nhn?code={code}"
-        r2 = requests.get(stock_url, headers={"User-Agent": "Mozilla/5.0"})
+        r2 = requests.get(stock_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         soup2 = BeautifulSoup(r2.text, "html.parser")
         price = soup2.select_one("p.no_today span.blind").text
         volume = soup2.select_one("table.no_info td em span.blind").text
         return f"[{query}] 주식 시세\n💰 현재 가격 → ₩{price}\n📊 거래대금 → ₩{volume}"
-    except:
-        return "한국 주식 정보를 가져올 수 없습니다."
+    except Exception as e:
+        return f"한국 주식 정보를 가져올 수 없습니다.\n⚠️ API 접근 실패 또는 네트워크/서버 오류\n({e})"
 
 # 미국 주식
 def get_us_stock_price(ticker):
@@ -124,14 +129,14 @@ def get_us_stock_price(ticker):
         price = stock.info["regularMarketPrice"]
         volume = stock.info.get("volume", 0)
         return f"[{ticker}] 주식 시세\n💰 현재 가격 → ${price:,}\n📊 거래대금 → {volume:,}"
-    except:
-        return "미국 주식 정보를 가져올 수 없습니다."
+    except Exception as e:
+        return f"미국 주식 정보를 가져올 수 없습니다.\n⚠️ yfinance API 접근 실패 또는 네트워크/서버 오류\n({e})"
 
 # 한국주식 TOP30
 def get_korea_top30():
     try:
         url = "https://finance.naver.com/sise/sise_rise.naver"
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         soup = BeautifulSoup(r.text, "html.parser")
         trs = soup.select("table.type_2 tr")
         top = []
@@ -141,12 +146,14 @@ def get_korea_top30():
                 continue
             name = tds[1].get_text(strip=True)
             rate = tds[2].get_text(strip=True)
-            if rate == "": rate = tds[3].get_text(strip=True)  # 혹시 rate가 빈칸이면 다음 컬럼에서 찾아줌
+            if rate == "": rate = tds[3].get_text(strip=True)
             top.append(f"{len(top)+1}. {name} ({rate})")
+        if not top:
+            return "한국주식 TOP30 정보를 불러오지 못했습니다.\n⚠️ 데이터 크롤링 실패"
         return "📈 한국주식 상승률 TOP30\n" + "\n".join(top)
     except Exception as e:
-        return f"한국주식 TOP30 정보를 불러오지 못했습니다.\n오류: {e}"
-        
+        return f"한국주식 TOP30 정보를 불러오지 못했습니다.\n⚠️ API 접근/크롤링 실패: {e}"
+
 # 미국주식 TOP30
 def get_us_top30():
     try:
@@ -155,11 +162,11 @@ def get_us_top30():
             "User-Agent": "Mozilla/5.0",
             "Accept-Language": "en-US,en;q=0.9",
         }
-        r = requests.get(url, headers=headers)
+        r = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(r.text, "html.parser")
         rows = []
         table = soup.find("table")
-        if table:
+        if table and table.find("tbody"):
             rows = table.find("tbody").find_all("tr")
         top = []
         for idx, tr in enumerate(rows[:30]):
@@ -173,7 +180,7 @@ def get_us_top30():
         # fallback (실패시)
         if not top:
             screener_url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?count=30&scrIds=day_gainers"
-            resp = requests.get(screener_url, headers=headers)
+            resp = requests.get(screener_url, headers=headers, timeout=5)
             js = resp.json()
             items = js["finance"]["result"][0]["quotes"]
             for idx, item in enumerate(items):
@@ -182,10 +189,10 @@ def get_us_top30():
                 rate = f'{item.get("regularMarketChangePercent", 0):+.2f}%'
                 top.append(f"{idx+1}. {name} ({symbol}) ({rate})")
         if not top:
-            return "미국주식 TOP30 정보를 불러오지 못했습니다."
+            return "미국주식 TOP30 정보를 불러오지 못했습니다.\n⚠️ 데이터 크롤링 실패"
         return "📈 미국주식 상승률 TOP30\n" + "\n".join(top)
     except Exception as e:
-        return f"미국주식 TOP30 정보를 불러오지 못했습니다.\n오류: {e}"
+        return f"미국주식 TOP30 정보를 불러오지 못했습니다.\n⚠️ API 접근/크롤링 실패: {e}"
 
 # 경제일정
 def get_economic_calendar():
@@ -204,16 +211,14 @@ def get_economic_calendar():
             "timezone": "Asia/Seoul",
             "limit_from": 0
         }
-        resp = requests.post(url, headers=headers, data=data)
+        resp = requests.post(url, headers=headers, data=data, timeout=7)
         resp_json = resp.json()
 
-        # 안전하게 data 파싱
         events = []
         data_list = resp_json.get('data', [])
         if isinstance(data_list, list):
             for item in data_list[:10]:
                 date_str = item.get("date", "")
-                time_str = item.get("time", "")
                 event = item.get("event", "")
                 country = item.get("country", "")
                 impact = item.get("importance", "")
@@ -225,7 +230,7 @@ def get_economic_calendar():
             return "일정 정보를 찾을 수 없습니다."
         return "📅 주요 경제 일정 (1개월)\n" + "\n".join(events)
     except Exception as e:
-        return f"일정 정보를 불러오지 못했습니다.\n오류: {e}"
+        return f"일정 정보를 불러오지 못했습니다.\n⚠️ API 접근/크롤링 실패: {e}"
 
 # 명령어 안내
 def get_help():
