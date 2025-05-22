@@ -3,9 +3,10 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-import json
 
 app = Flask(__name__)
+
+CMC_API_KEY = "f8a44267-af9f-470e-8848-9b952cd23b53"
 
 def get_upbit_symbol_map():
     try:
@@ -33,21 +34,26 @@ def get_symbol_by_korean_name(name):
         UPBIT_MAP = get_upbit_symbol_map()
     return UPBIT_MAP.get(name)
 
-# 바이낸스 글로벌 시세 (GET 방식)
-def get_binance_price_and_change(symbol):
+def get_cmc_price_and_change(symbol, convert="KRW"):
+    url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+    headers = {
+        "Accepts": "application/json",
+        "X-CMC_PRO_API_KEY": CMC_API_KEY,
+    }
+    params = {
+        "symbol": symbol.upper(),
+        "convert": convert
+    }
     try:
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol.upper()}USDT"
-        r = requests.get(url, timeout=3)
-        if r.status_code == 451:
-            return None, None, "Binance API 국가 차단 (451)"
+        r = requests.get(url, headers=headers, params=params, timeout=5)
         if r.status_code != 200:
-            return None, None, f"Binance API 접속 실패 (status:{r.status_code})"
+            return None, None, f"CMC API 접속 실패 (status:{r.status_code})"
         data = r.json()
-        price = float(data["lastPrice"])
-        change = float(data["priceChangePercent"])
-        return price, change, None
+        price = data["data"][symbol.upper()]["quote"][convert]["price"]
+        change_24h = data["data"][symbol.upper()]["quote"][convert]["percent_change_24h"]
+        return price, change_24h, None
     except Exception as e:
-        return None, None, f"Binance API 에러: {e}"
+        return None, None, f"CMC API 에러: {e}"
 
 def get_upbit_price_and_change(symbol):
     try:
@@ -103,26 +109,24 @@ def get_coin_price(query):
         else:
             symbol = symbol.upper()
 
-        # 바이낸스에서 시세 및 변동률 GET
-        global_price, global_change, err1 = get_binance_price_and_change(symbol)
+        # CoinMarketCap 글로벌 시세 (원화 기준)
+        global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="KRW")
         upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
         bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
-        ex, err4 = get_exchange_rate()
 
         if err1: error_msgs.append(f"글로벌가격: {err1}")
         if err2: error_msgs.append(f"업비트: {err2}")
         if err3: error_msgs.append(f"빗썸: {err3}")
-        if err4: error_msgs.append(f"환율: {err4}")
 
         if not global_price:
             global_str = "정보 없음"
             global_rate = ""
             kimchi_str = "계산불가"
         else:
-            global_str = f"${global_price:,.2f}"
+            global_str = f"₩{int(global_price):,}"
             global_rate = f" ({global_change:+.2f}%)"
             if upbit:
-                kimchi = ((upbit - global_price * ex) / (global_price * ex)) * 100
+                kimchi = ((upbit - global_price) / global_price) * 100
                 kimchi_str = f"{kimchi:+.2f}%"
             else:
                 kimchi_str = "계산불가"
@@ -170,11 +174,9 @@ def get_korean_stock_price(query):
                         return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
                     else:
                         return f"{query}: 다음금융 정보 파싱 실패 (가격 또는 변동률 없음)"
-                # 다음 API 응답 실패 → 네이버 fallback 진행
         # 다음 검색 or 파싱 실패 → 네이버 fallback 진행
 
         # 3. 네이버로 Fallback
-        headers = {"User-Agent": "Mozilla/5.0"}
         search_url = f"https://finance.naver.com/search/search.naver?query={query}"
         r = requests.get(search_url, headers=headers, timeout=3)
         soup = BeautifulSoup(r.text, "html.parser")
@@ -192,7 +194,6 @@ def get_korean_stock_price(query):
         try:
             price = soup2.select_one("p.no_today span.blind").text.replace(',', '')
             # 증감/등락률
-            change = soup2.select_one("p.no_exday span.blind").text.replace(',', '')
             change_rate = soup2.select_one("p.no_exday em span.blind").text
             # 거래량 추출
             volume = ""
@@ -286,56 +287,6 @@ def get_us_ranking(rise=True):
     except Exception as e:
         return f"미국주식 정보를 불러오지 못했습니다. 원인: {e}"
 
-def get_economic_calendar():
-    from datetime import datetime
-    try:
-        url = "https://kr.investing.com/economic-calendar/"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=6)
-        if r.status_code != 200:
-            return f"경제일정 사이트 접속 실패 (status:{r.status_code})"
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        events = []
-        rows = soup.select("tr.js-event-item")
-        now = datetime.now()
-        month = now.month
-
-        for row in rows:
-            # 날짜
-            date_str = row.get("data-event-datetime", "")
-            if not date_str:
-                continue
-            event_dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-            if event_dt.month != month:
-                continue
-
-            # 중요도 체크 (불꽃 세 개 이상)
-            impact = len(row.select(".grayFullBullishIcon"))
-            if impact < 3:
-                continue
-
-            country = row.select_one(".flagCur span")
-            event = row.select_one(".event")
-            if not country or not event:
-                continue
-
-            country = country.get_text(strip=True)
-            event = event.get_text(strip=True)
-            date_fmt = event_dt.strftime("%m월 %d일")
-            events.append(f"{date_fmt} [{country}] {event} (★★★)")
-
-            if len(events) >= 10:
-                break
-
-        if not events:
-            return "이번 달 중요 경제일정을 찾을 수 없습니다."
-
-        return "📅 이번 달 중요 경제 일정 (★★★ 이상)\n\n" + "\n".join(events)
-
-    except Exception as e:
-        return f"경제일정 정보를 불러오지 못했습니다. 원인: {e}"
-
 def get_help():
     return (
         "📌 사용 가능한 명령어 목록\n\n"
@@ -347,7 +298,6 @@ def get_help():
         "✔️ 미국 주식 상승률: /미국주식 상승률\n"
         "✔️ 미국 주식 하락률: /미국주식 하락률\n"
         "✔️ 주요 금융시장 지수: /지수\n"
-        "✔️ 일정: /일정\n"
         "✔️ 명령어 안내: /명령어"
     )
 
@@ -364,16 +314,14 @@ def get_market_indices():
             r = requests.get(url, headers=headers, timeout=3)
             soup = BeautifulSoup(r.text, "html.parser")
             kospi = soup.select_one("#KOSPI_now").text.strip()
-            kospi_diff = soup.select_one("#KOSPI_change").text.strip()
             kospi_rate = soup.select_one("#KOSPI_rate").text.strip()
             kosdaq = soup.select_one("#KOSDAQ_now").text.strip()
-            kosdaq_diff = soup.select_one("#KOSDAQ_change").text.strip()
             kosdaq_rate = soup.select_one("#KOSDAQ_rate").text.strip()
             results.append(f"🇰🇷 한국\n- 코스피: {kospi} ({kospi_rate})\n- 코스닥: {kosdaq} ({kosdaq_rate})")
-        except Exception as e:
+        except Exception:
             results.append("🇰🇷 한국\n- 코스피/코스닥 정보를 불러올 수 없습니다.")
 
-        # 미국 (야후파이낸스)
+        # 미국 주요지수 (야후파이낸스)
         try:
             indices = {
                 "다우존스": "^DJI",
@@ -391,7 +339,7 @@ def get_market_indices():
         except Exception:
             results.append("🇺🇸 미국\n- 미국 지수 정보를 불러올 수 없습니다.")
 
-        # 일본 니케이225 (야후파이낸스)
+        # 일본 니케이225
         try:
             stock = yf.Ticker("^N225")
             price = stock.info["regularMarketPrice"]
@@ -401,7 +349,7 @@ def get_market_indices():
         except Exception:
             results.append("🇯🇵 일본\n- 니케이225 정보를 불러올 수 없습니다.")
 
-        # 중국 상해종합 (야후파이낸스)
+        # 중국 상해종합
         try:
             stock = yf.Ticker("000001.SS")
             price = stock.info["regularMarketPrice"]
@@ -415,6 +363,7 @@ def get_market_indices():
     except Exception as e:
         return f"지수 정보를 불러오지 못했습니다. 원인: {e}"
 
+# --- Flask 라우터 ---
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -424,8 +373,6 @@ def webhook():
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_market_indices()}}]}})
     if utter == "/명령어":
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_help()}}]}})
-    if utter == "/일정":
-        return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_economic_calendar()}}]}})
     if utter == "/한국주식 상승률":
         return jsonify({"version": "2.0", "template": {"outputs": [{"simpleText": {"text": get_korea_ranking(rise=True)}}]}})
     if utter == "/한국주식 하락률":
