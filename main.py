@@ -130,7 +130,6 @@ def get_korean_stock_price(query):
             "User-Agent": "Mozilla/5.0",
             "referer": "https://finance.daum.net/",
         }
-        # 1. 종목 코드 검색
         search_url = f"https://search.daum.net/search?w=tot&q={query}+주식"
         r = requests.get(search_url, headers=headers, timeout=3)
         soup = BeautifulSoup(r.text, "html.parser")
@@ -140,18 +139,17 @@ def get_korean_stock_price(query):
         href = link["href"]
         code = href.split("/A")[-1].split("?")[0]
 
-        # 2. 종목 정보 API
         info_url = f"https://finance.daum.net/api/quotes/A{code}?summary=false"
         resp = requests.get(info_url, headers=headers, timeout=3)
         if resp.status_code != 200:
             return f"다음금융 API 접속 실패 (status:{resp.status_code})"
         data = resp.json()
         price = data.get("tradePrice")
-        volume = data.get("accTradePrice")  # 거래대금(원)
+        volume = data.get("tradeVolume")  # 거래량(주식 수)
         name = data.get("name", query)
         if not price:
             return f"{query}: 가격 정보를 찾을 수 없습니다."
-        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,}\n📊 거래대금 → ₩{volume:,}"
+        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,}\n📊 거래량 → {volume:,}주"
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
@@ -160,7 +158,7 @@ def get_us_stock_price(ticker):
         stock = yf.Ticker(ticker)
         price = stock.info["regularMarketPrice"]
         volume = stock.info.get("volume", 0)
-        return f"[{ticker}] 주식 시세\n💰 현재 가격 → ${price:,}\n📊 거래대금 → {volume:,}"
+        return f"[{ticker}] 주식 시세\n💰 현재 가격 → ${price:,}\n📊 거래량 → {volume:,}주"
     except Exception as e:
         return f"미국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
