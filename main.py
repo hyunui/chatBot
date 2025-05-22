@@ -312,7 +312,10 @@ def get_market_indices():
         # 한국 코스피/코스닥 (네이버)
         try:
             url = "https://finance.naver.com/sise/"
-            r = requests.get(url, timeout=3)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            r = requests.get(url, headers=headers, timeout=3)
             soup = BeautifulSoup(r.text, "html.parser")
             kospi = soup.select_one("#KOSPI_now").text.strip()
             kospi_diff = soup.select_one("#KOSPI_change").text.strip()
