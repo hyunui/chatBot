@@ -110,7 +110,7 @@ def get_coin_price(query):
             symbol = symbol.upper()
 
         # CoinMarketCap 글로벌 시세 (원화 기준)
-        global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="KRW")
+        global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
         upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
         bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
 
