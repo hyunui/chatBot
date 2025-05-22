@@ -34,19 +34,23 @@ def get_symbol_by_korean_name(name):
         UPBIT_MAP = get_upbit_symbol_map()
     return UPBIT_MAP.get(name)
 
-# 코인 시세 + 상승률
-def get_binance_price_and_change(symbol):
+# OKX 시세+변동률
+def get_okx_price_and_change(symbol):
     try:
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol.upper()}USDT"
+        inst_id = f"{symbol.upper()}-USDT"
+        url = f"https://www.okx.com/api/v5/market/ticker?instId={inst_id}"
         r = requests.get(url, timeout=3)
         if r.status_code != 200:
-            return None, None, f"Binance API 접속 실패 (status:{r.status_code})"
+            return None, None, f"OKX API 접속 실패 (status:{r.status_code})"
         data = r.json()
-        price = float(data["lastPrice"])
-        change = float(data["priceChangePercent"])  # 24h 변동률(%)
+        if not data.get("data"):
+            return None, None, "OKX 데이터 없음"
+        item = data["data"][0]
+        price = float(item["last"])
+        change = float(item["chgPct"])
         return price, change, None
     except Exception as e:
-        return None, None, f"Binance API 에러: {e}"
+        return None, None, f"OKX API 에러: {e}"
 
 def get_upbit_price_and_change(symbol):
     try:
