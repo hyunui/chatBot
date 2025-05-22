@@ -144,28 +144,68 @@ def get_coin_price(query):
 
 def get_korean_stock_price(query):
     try:
+        # 1. 다음에서 종목코드 탐색
         headers = {"User-Agent": "Mozilla/5.0"}
-        # 다음금융 종목 검색 API
-        search_url = f"https://finance.daum.net/api/search?q={query}"
+        search_url = f"https://search.daum.net/search?w=tot&q={query}+주식"
         r = requests.get(search_url, headers=headers, timeout=3)
-        js = r.json()
-        # 첫 종목코드 추출
-        items = js.get("searchCommon", [])
-        if not items:
-            return f"{query} : 종목코드를 찾을 수 없습니다."
-        code = items[0]["code"]
-        name = items[0]["name"]
-        # 종목 상세 시세
-        info_url = f"https://finance.daum.net/api/quotes/A{code}?summary=false"
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "html.parser")
+            link = soup.select_one('a[href*="finance.daum.net/quotes/A"]')
+            if link:
+                href = link["href"]
+                code = href.split("/A")[-1].split("?")[0]
+
+                # 2. 종목 상세 정보 요청 (다음 API)
+                info_url = f"https://finance.daum.net/api/quotes/A{code}?summary=false"
+                resp = requests.get(info_url, headers=headers, timeout=3)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    price = data.get("tradePrice")
+                    volume = data.get("tradeVolume")
+                    change = data.get("changeRate")
+                    name = data.get("name", query)
+                    if price is not None and change is not None:
+                        sign = "+" if change >= 0 else ""
+                        if volume is None: volume = 0
+                        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
+                    else:
+                        return f"{query}: 다음금융 정보 파싱 실패 (가격 또는 변동률 없음)"
+                # 다음 API 응답 실패 → 네이버 fallback 진행
+        # 다음 검색 or 파싱 실패 → 네이버 fallback 진행
+
+        # 3. 네이버로 Fallback
+        headers = {"User-Agent": "Mozilla/5.0"}
+        search_url = f"https://finance.naver.com/search/search.naver?query={query}"
+        r = requests.get(search_url, headers=headers, timeout=3)
+        soup = BeautifulSoup(r.text, "html.parser")
+        link = soup.select_one('a[href*="/item/main.naver?code="]')
+        if not link:
+            return f"{query} : 종목코드를 찾을 수 없습니다. (다음/네이버 모두 실패)"
+        href = link["href"]
+        code = href.split("code=")[-1]
+        name = link.text.strip()
+
+        # 종목 시세 정보 네이버에서 가져오기
+        info_url = f"https://finance.naver.com/item/main.naver?code={code}"
         r2 = requests.get(info_url, headers=headers, timeout=3)
-        data = r2.json()
-        price = data.get("tradePrice")
-        change = data.get("changeRate")
-        volume = data.get("tradeVolume")
-        sign = "+" if change and change >= 0 else ""
-        if not price:
-            return f"{name}: 시세 정보를 찾을 수 없습니다."
-        return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{price:,} ({sign}{change:.2f}%)\n📊 거래량 → {volume:,}주"
+        soup2 = BeautifulSoup(r2.text, "html.parser")
+        try:
+            price = soup2.select_one("p.no_today span.blind").text.replace(',', '')
+            # 증감/등락률
+            change = soup2.select_one("p.no_exday span.blind").text.replace(',', '')
+            change_rate = soup2.select_one("p.no_exday em span.blind").text
+            # 거래량 추출
+            volume = ""
+            for th in soup2.select("table.no_info th"):
+                if "거래량" in th.text:
+                    td = th.find_next("td")
+                    if td:
+                        volume = td.text.strip().replace(',', '')
+                    break
+            sign = "+" if '-' not in change_rate else ""
+            return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{int(price):,} ({sign}{change_rate})\n📊 거래량 → {volume}주"
+        except Exception:
+            return f"{query}: 네이버 정보 파싱 실패 (가격/등락률/거래량 없음)"
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
