@@ -102,13 +102,14 @@ def get_cmc_price_and_change(symbol, convert="KRW"):
     try:
         r = requests.get(url, headers=headers, params=params, timeout=5)
         if r.status_code != 200:
-            return None, None, f"CMC API 접속 실패 (status:{r.status_code})"
+            return None, None, f"CMC API 접속 실패 (status:{r.status_code})", None
         data = r.json()
         price = data["data"][symbol.upper()]["quote"][convert]["price"]
         change_24h = data["data"][symbol.upper()]["quote"][convert]["percent_change_24h"]
-        return price, change_24h, None
+        remaining = r.headers.get("X-RateLimit-Remaining")
+        return price, change_24h, None, remaining
     except Exception as e:
-        return None, None, f"CMC API 에러: {e}"
+        return None, None, f"CMC API 에러: {e}", None
 
 def get_upbit_price_and_change(symbol, market="KRW"):
     try:
@@ -171,7 +172,7 @@ def get_coin_price(query):
             error_msgs.append(f"환율: {ex_err}")
 
         # 글로벌(달러) 가격
-        global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
+        global_price, global_change, err1, cmc_remaining = get_cmc_price_and_change(symbol, convert="USD")
         upbit = None
         upbit_change = None
         # 업비트 가격 (마켓 타입 따라 다르게)
@@ -217,7 +218,8 @@ def get_coin_price(query):
 - 빗썸 → {f'₩{bithumb:,} ({bithumb_change:+.2f}%)' if bithumb else '정보 없음'}
 
 🧮 김치 프리미엄 → {kimchi_str}"""
-
+        if cmc_remaining:
+           result += f"\n\n🔄 CoinMarketCap 남은 호출 횟수: {cmc_remaining}"
         if error_msgs:
             result += "\n\n[접근 실패 정보]\n" + "\n".join(error_msgs)
         return result
