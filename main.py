@@ -7,20 +7,11 @@ from datetime import datetime, timedelta
 import os
 import json
 
-STOCK_CODE_MAP = build_stock_code_map()
-
-app = Flask(__name__)
-
-load_dotenv()
-CMC_API_KEY = os.environ.get("CMC_API_KEY")
-
 def build_stock_code_map():
     """
     네이버 금융에서 전체 상장종목(코스피+코스닥) 코드를 긁어와서
     종목명/심볼/코드 모두를 key로 하여 빠른 검색을 지원하는 dict를 만든다.
     """
-    import requests
-    from bs4 import BeautifulSoup
 
     code_map = {}
     urls = [
@@ -47,6 +38,13 @@ def build_stock_code_map():
         except Exception as e:
             pass
     return code_map
+
+STOCK_CODE_MAP = build_stock_code_map()
+
+app = Flask(__name__)
+
+load_dotenv()
+CMC_API_KEY = os.environ.get("CMC_API_KEY")
     
 def get_upbit_symbol_map():
     try:
@@ -149,20 +147,25 @@ def get_coin_price(query):
         else:
             symbol = symbol.upper()
 
-        # CoinMarketCap 글로벌 시세 (원화 기준)
-        global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
-        upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
-        bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
+        # 환율 가져오기
+krw_usd, ex_err = get_exchange_rate()
+if ex_err:
+    error_msgs.append(f"환율: {ex_err}")
 
-        if err1: error_msgs.append(f"글로벌가격: {err1}")
-        if err2: error_msgs.append(f"업비트: {err2}")
-        if err3: error_msgs.append(f"빗썸: {err3}")
+# CoinMarketCap 글로벌 시세 (달러 기준)
+global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
+upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
+bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
 
-        # 글로벌 가격(달러)을 원화로 환산
-        if global_price:
-            global_price_krw = global_price * krw_usd
-        else:
-            global_price_krw = None
+if err1: error_msgs.append(f"글로벌가격: {err1}")
+if err2: error_msgs.append(f"업비트: {err2}")
+if err3: error_msgs.append(f"빗썸: {err3}")
+
+# 글로벌 가격(달러 → 원화)
+if global_price:
+    global_price_krw = global_price * krw_usd
+else:
+    global_price_krw = None
     
         if not global_price_krw:
             global_str = "정보 없음"
