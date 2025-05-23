@@ -10,10 +10,11 @@ import json
 def build_stock_code_map():
     """
     네이버 금융에서 전체 상장종목(코스피+코스닥) 코드를 긁어와서
-    종목명/심볼/코드 모두를 key로 하여 빠른 검색을 지원하는 dict를 만든다.
+    종목명/심볼/코드 모두를 key로 하여 빠른 검색을 지원하는 dict(code_map)와,
+    종목코드 → 종목명 딕셔너리(code_to_korname)도 함께 만든다.
     """
-
     code_map = {}
+    code_to_korname = {}
     urls = [
         "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13",  # 코스피
         "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=14",  # 코스닥
@@ -21,10 +22,8 @@ def build_stock_code_map():
     for url in urls:
         try:
             df = None
-            # pandas는 기본 내장 X -> 직접 파싱
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
-                # 표에서 추출
                 import pandas as pd
                 import io
                 df = pd.read_html(io.BytesIO(r.content), header=0)[0]
@@ -33,13 +32,13 @@ def build_stock_code_map():
                     name = str(row['회사명']).strip()
                     code_map[name] = code
                     code_map[code] = code
-                    # 심볼도 매핑(필요시, 예: 영어명/기타)
-            # 실패 무시
-        except Exception as e:
+                    code_to_korname[code] = name
+        except Exception:
             pass
-    return code_map
+    return code_map, code_to_korname
 
-STOCK_CODE_MAP = build_stock_code_map()
+# 실행 시
+STOCK_CODE_MAP, CODE_TO_KORNAME = build_stock_code_map()
 
 app = Flask(__name__)
 
