@@ -360,32 +360,25 @@ def get_help():
     )
 
 def get_market_indices():
-    import re
     results = []
-    # --- 한국: 코스피/코스닥 (네이버 검색 결과) ---
-    try:
-        def get_naver_index(search_word):
-            url = f"https://search.naver.com/search.naver?query={search_word}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            }
-            r = requests.get(url, headers=headers, timeout=3)
-            soup = BeautifulSoup(r.text, "html.parser")
-            # 네이버 검색 결과 상단 지수값 (2024년 기준)
-            num = soup.select_one(".stock_tlt span.num")
-            rate = soup.select_one(".stock_tlt em span")  # 변동률
-            if not num:
-                num = soup.select_one(".rate_info strong")  # fallback
-            index = num.text.strip() if num else "정보없음"
-            change = rate.text.strip() if rate else ""
-            # +/- 부호 정리
-            if change and not change.startswith(("+", "-")):
-                change = "+" + change
-            return index, change
 
-        kospi, kospi_rate = get_naver_index("코스피 지수")
-        kosdaq, kosdaq_rate = get_naver_index("코스닥 지수")
-        results.append(f"🇰🇷 한국\n- 코스피: {kospi} ({kospi_rate})\n- 코스닥: {kosdaq} ({kosdaq_rate})")
+    # --- 한국: 코스피/코스닥 (야후파이낸스) ---
+    try:
+        indices = {
+            "코스피": "^KS11",
+            "코스닥": "^KQ11",
+        }
+        kr_lines = []
+        for name, ticker in indices.items():
+            stock = yf.Ticker(ticker)
+            price = stock.info.get("regularMarketPrice")
+            change = stock.info.get("regularMarketChangePercent")
+            sign = "+" if change is not None and change >= 0 else ""
+            if price is not None and change is not None:
+                kr_lines.append(f"- {name}: {price:,} ({sign}{change:.2f}%)")
+            else:
+                kr_lines.append(f"- {name}: 정보없음")
+        results.append("🇰🇷 한국\n" + "\n".join(kr_lines))
     except Exception:
         results.append("🇰🇷 한국\n- 코스피/코스닥 정보를 불러올 수 없습니다.")
 
