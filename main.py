@@ -231,40 +231,27 @@ def get_coin_price(query):
 
 def get_korean_stock_price(query):
     try:
-        code = STOCK_CODE_MAP.get(query.strip())
-        if not code:
+        entry = STOCK_CODE_MAP.get(query.strip())
+        if not entry:
             return f"{query}: 종목코드를 찾을 수 없습니다."
-        # 시세 네이버에서 크롤링
-        info_url = f"https://finance.naver.com/item/main.naver?code={code}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(info_url, headers=headers, timeout=3)
-        soup = BeautifulSoup(r.text, "html.parser")
-        try:
-            name = soup.select_one("div.wrap_company h2").text.strip()
-            price = soup.select_one("p.no_today span.blind").text.replace(',', '')
-            change_rate = soup.select_one("p.no_exday em span.blind").text
+        code, market = entry
+        symbol = f"{code}.{market}"
+        stock = yf.Ticker(symbol)
+        info = stock.info
 
-            # 거래량 파싱 (표에서 "거래량" 찾기)
-            volume = ""
-            for th in soup.select("table.no_info th"):
-                if "거래량" in th.text:
-                    td = th.find_next_sibling("td")
-                    if td:
-                        volume = td.text.strip().replace(',', '')
-                    break
+        name = info.get("shortName", query)
+        price = info.get("regularMarketPrice")
+        prev = info.get("regularMarketPreviousClose")
+        volume = info.get("volume", 0)
 
-            # 거래대금 파싱도 필요하다면 아래 추가
-            # for th in soup.select("table.no_info th"):
-            #     if "거래대금" in th.text:
-            #         td = th.find_next_sibling("td")
-            #         if td:
-            #             trade_value = td.text.strip().replace(',', '')
-            #         break
+        if price is None or prev is None:
+            return f"{name}: 시세/변동률 정보 없음"
 
-            sign = "+" if '-' not in change_rate else ""
-            return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{int(price):,} ({sign}{change_rate})\n📊 거래량 → {volume}주"
-        except Exception:
-            return f"{query}: 네이버 시세 정보 파싱 실패"
+        change = ((price - prev) / prev * 100) if prev else 0
+        sign = "+" if change >= 0 else ""
+        return (f"[{name}] 주식 시세\n"
+                f"💰 현재 가격 → ₩{int(price):,} ({sign}{change:.2f}%)\n"
+                f"📊 거래량 → {int(volume):,}주")
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
