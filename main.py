@@ -151,7 +151,6 @@ def get_exchange_rate():
         return 1400.0, f"환율 API 에러: {e}"
 
 def get_coin_price(query):
-def get_coin_price(query):
     try:
         query = query.strip()
         is_korean = not query.isascii()
