@@ -226,7 +226,6 @@ def get_coin_price(query):
         return f"코인 시세 조회 중 오류 발생: {e}"
         
 def get_korean_stock_price(query):
-def get_korean_stock_price(query):
     try:
         code = STOCK_CODE_MAP.get(query.strip())
         if not code:
@@ -279,24 +278,30 @@ def get_korea_ranking(rise=True):
         fieldName = "changeRate"
         order = "desc" if rise else "asc"
         change = "RISE" if rise else "FALL"
+
+        def parse_items(items):
+            result = []
+            for idx, item in enumerate(items):
+                name = item.get('name', '')
+                symbol = item.get('symbol', '') or item.get('code', '')
+                changeRate = item.get('changeRate', '')
+                result.append(f"{idx+1}. {name} ({symbol}) {changeRate}%")
+            return result
+
         kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
         resp_kospi = requests.get(kospi_url, headers=headers, timeout=3)
         if resp_kospi.status_code != 200:
             return f"코스피 정보 접속 실패 (status:{resp_kospi.status_code})"
         items_kospi = resp_kospi.json().get("data", [])
-        kospi_list = [
-            f"{idx+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%"
-            for idx, item in enumerate(items_kospi)
-        ]
+        kospi_list = parse_items(items_kospi)
+
         kosdaq_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSDAQ&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
         resp_kosdaq = requests.get(kosdaq_url, headers=headers, timeout=3)
         if resp_kosdaq.status_code != 200:
             return f"코스닥 정보 접속 실패 (status:{resp_kosdaq.status_code})"
         items_kosdaq = resp_kosdaq.json().get("data", [])
-        kosdaq_list = [
-            f"{idx+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%"
-            for idx, item in enumerate(items_kosdaq)
-        ]
+        kosdaq_list = parse_items(items_kosdaq)
+
         if not kospi_list and not kosdaq_list:
             return "한국주식 정보를 불러오지 못했습니다."
         res = "코스피 상승률\n" if rise else "코스피 하락률\n"
