@@ -243,13 +243,24 @@ def get_korean_stock_price(query):
             name = soup.select_one("div.wrap_company h2").text.strip()
             price = soup.select_one("p.no_today span.blind").text.replace(',', '')
             change_rate = soup.select_one("p.no_exday em span.blind").text
+
+            # 거래량 파싱 (표에서 "거래량" 찾기)
             volume = ""
             for th in soup.select("table.no_info th"):
                 if "거래량" in th.text:
-                    td = th.find_next("td")
+                    td = th.find_next_sibling("td")
                     if td:
                         volume = td.text.strip().replace(',', '')
                     break
+
+            # 거래대금 파싱도 필요하다면 아래 추가
+            # for th in soup.select("table.no_info th"):
+            #     if "거래대금" in th.text:
+            #         td = th.find_next_sibling("td")
+            #         if td:
+            #             trade_value = td.text.strip().replace(',', '')
+            #         break
+
             sign = "+" if '-' not in change_rate else ""
             return f"[{name}] 주식 시세\n💰 현재 가격 → ₩{int(price):,} ({sign}{change_rate})\n📊 거래량 → {volume}주"
         except Exception:
