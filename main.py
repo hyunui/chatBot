@@ -66,11 +66,31 @@ def get_upbit_symbol_map():
 
 UPBIT_MAP = get_upbit_symbol_map()
 
-def get_symbol_by_korean_name(name):
-    global UPBIT_MAP
-    if not UPBIT_MAP:
-        UPBIT_MAP = get_upbit_symbol_map()
-    return UPBIT_MAP.get(name)
+def get_symbol_by_korean_name_krw_btc(name):
+    """
+    업비트에서 한글명 검색 시, KRW마켓이 우선. 없으면 BTC마켓에서 심볼 반환.
+    """
+    try:
+        url = "https://api.upbit.com/v1/market/all"
+        r = requests.get(url, timeout=3)
+        if r.status_code != 200:
+            return None, None  # (심볼, 마켓타입)
+        markets = r.json()
+        krw_symbol = None
+        btc_symbol = None
+        for m in markets:
+            if m["korean_name"] == name:
+                if m["market"].startswith("KRW-"):
+                    krw_symbol = m["market"].replace("KRW-", "")
+                elif m["market"].startswith("BTC-"):
+                    btc_symbol = m["market"].replace("BTC-", "")
+        if krw_symbol:
+            return krw_symbol, "KRW"
+        if btc_symbol:
+            return btc_symbol, "BTC"
+        return None, None
+    except Exception as e:
+        return None, None
 
 def get_cmc_price_and_change(symbol, convert="KRW"):
     url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
@@ -93,13 +113,17 @@ def get_cmc_price_and_change(symbol, convert="KRW"):
     except Exception as e:
         return None, None, f"CMC API 에러: {e}"
 
-def get_upbit_price_and_change(symbol):
+def get_upbit_price_and_change(symbol, market="KRW"):
+    """
+    market: "KRW" or "BTC"
+    """
     try:
-        r = requests.get(f"https://api.upbit.com/v1/ticker?markets=KRW-{symbol.upper()}", timeout=3)
+        m = market.upper()
+        r = requests.get(f"https://api.upbit.com/v1/ticker?markets={m}-{symbol.upper()}", timeout=3)
         if r.status_code != 200:
             return None, None, f"Upbit API 접속 실패 (status:{r.status_code})"
         data = r.json()[0]
-        price = int(data["trade_price"])
+        price = float(data["trade_price"])
         change = float(data.get("signed_change_rate", 0)) * 100
         return price, change, None
     except Exception as e:
@@ -139,53 +163,62 @@ def get_coin_price(query):
         kr_name = query
         error_msgs = []
 
-        # 한글이면 업비트에서 심볼 변환
+        upbit_market_type = "KRW"
         if is_korean:
-            symbol = get_symbol_by_korean_name(query)
+            symbol, upbit_market_type = get_symbol_by_korean_name_krw_btc(query)
             if not symbol:
-                return f"[{query}] 코인없음 (국내 거래소에 존재하지 않음)"
+                return f"[{query}] 코인없음 (업비트에 미상장)"
         else:
             symbol = symbol.upper()
+            upbit_market_type = "KRW"
 
-        # ↓↓↓↓↓ 이 부분부터 들여쓰기(4칸) 필요
-        # 환율 가져오기
+        # 환율
         krw_usd, ex_err = get_exchange_rate()
         if ex_err:
             error_msgs.append(f"환율: {ex_err}")
 
-        # CoinMarketCap 글로벌 시세 (달러 기준)
+        # 글로벌(달러) 가격
         global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
-        upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
+
+        # 업비트 가격 (KRW/BTC마켓에 따라 다르게)
+        if upbit_market_type == "KRW":
+            upbit, upbit_change, err2 = get_upbit_price_and_change(symbol, market="KRW")
+        elif upbit_market_type == "BTC":
+            btc_price, _, btc_err = get_upbit_price_and_change("BTC", market="KRW")
+            coin_btc, upbit_change, err2 = get_upbit_price_and_change(symbol, market="BTC")
+            if coin_btc and btc_price:
+                upbit = int(coin_btc * btc_price)
+            else:
+                upbit = None
+        else:
+            upbit, upbit_change, err2 = None, None, "업비트 가격 없음"
+
         bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
 
         if err1: error_msgs.append(f"글로벌가격: {err1}")
-        if err2: error_msgs.append(f"업비트: {err2}")
+        if upbit is None: error_msgs.append(f"업비트: {err2}")
         if err3: error_msgs.append(f"빗썸: {err3}")
 
-        # 글로벌 가격(달러 → 원화)
+        # 글로벌가격 달러($)로 표기
         if global_price:
-            global_price_krw = global_price * krw_usd
-        else:
-            global_price_krw = None
-
-        if not global_price_krw:
-            global_str = "정보 없음"
-            global_rate = ""
-            kimchi_str = "계산불가"
-        else:
-            global_str = f"₩{int(global_price_krw):,}"
+            global_str = f"${global_price:,.2f}"
             global_rate = f" ({global_change:+.2f}%)"
+            # 김치프리미엄 계산
             if upbit:
-                kimchi = ((upbit - global_price_krw) / global_price_krw) * 100
+                kimchi = ((upbit - global_price * krw_usd) / (global_price * krw_usd)) * 100
                 kimchi_str = f"{kimchi:+.2f}%"
             else:
                 kimchi_str = "계산불가"
+        else:
+            global_str = "정보 없음"
+            global_rate = ""
+            kimchi_str = "계산불가"
 
         result = f"""[{symbol}] {kr_name} 시세
 
 💰 글로벌 가격 → {global_str}{global_rate}
 🇰🇷 국내 거래소 가격
-- 업비트 → {f'₩{upbit:,} ({upbit_change:+.2f}%)' if upbit else '정보 없음'}
+- 업비트 → {f'₩{int(upbit):,} ({upbit_change:+.2f}%)' if upbit else '정보 없음'}
 - 빗썸 → {f'₩{bithumb:,} ({bithumb_change:+.2f}%)' if bithumb else '정보 없음'}
 
 🧮 김치 프리미엄 → {kimchi_str}"""
