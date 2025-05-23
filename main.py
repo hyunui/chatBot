@@ -230,7 +230,9 @@ def get_korean_stock_price(query):
         if not code:
             return f"{query}: 종목코드를 찾을 수 없습니다."
 
-        # KS/KQ 모두 시도 (야후파이낸스 심볼 규칙)
+        # 종목코드 → 한글명 매핑 (예: {'005930': '삼성전자'})
+        kor_name = CODE_TO_KORNAME.get(code, query.strip())
+
         symbols = [f"{code}.KS", f"{code}.KQ"]
         info = None
         symbol_used = None
@@ -243,19 +245,18 @@ def get_korean_stock_price(query):
                 break
 
         if info is None or info.get("regularMarketPrice") is None:
-            return f"{query}: 시세/변동률 정보 없음 (야후파이낸스 심볼 미일치)"
+            return f"{kor_name}: 시세/변동률 정보 없음 (야후파이낸스 심볼 미일치)"
 
-        name = info.get("shortName") or query
         price = info.get("regularMarketPrice")
         prev = info.get("regularMarketPreviousClose") or price
         volume = info.get("volume") or 0
 
         if price is None or prev is None:
-            return f"{name}: 시세/변동률 정보 없음"
+            return f"{kor_name}: 시세/변동률 정보 없음"
 
         change = ((price - prev) / prev * 100) if prev else 0
         sign = "+" if change >= 0 else ""
-        return (f"[{name}] 주식 시세\n"
+        return (f"[{kor_name}] 주식 시세\n"
                 f"💰 현재 가격 → ₩{int(price):,} ({sign}{change:.2f}%)\n"
                 f"📊 거래량 → {int(volume):,}주")
     except Exception as e:
