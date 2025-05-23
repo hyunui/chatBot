@@ -230,19 +230,26 @@ def get_korean_stock_price(query):
         code = STOCK_CODE_MAP.get(query.strip())
         if not code:
             return f"{query}: 종목코드를 찾을 수 없습니다."
-        # 코스피/코스닥 구분(간단 규칙 적용, 완벽하진 않음)
-        if code.startswith('0') or code.startswith('1'):
-            market = "KS"
-        else:
-            market = "KQ"
-        symbol = f"{code}.{market}"
-        stock = yf.Ticker(symbol)
-        info = stock.info
 
-        name = info.get("shortName", query)
+        # KS/KQ 모두 시도 (야후파이낸스 심볼 규칙)
+        symbols = [f"{code}.KS", f"{code}.KQ"]
+        info = None
+        symbol_used = None
+        for symbol in symbols:
+            stock = yf.Ticker(symbol)
+            info = stock.info
+            price = info.get("regularMarketPrice")
+            if price is not None:
+                symbol_used = symbol
+                break
+
+        if info is None or info.get("regularMarketPrice") is None:
+            return f"{query}: 시세/변동률 정보 없음 (야후파이낸스 심볼 미일치)"
+
+        name = info.get("shortName") or query
         price = info.get("regularMarketPrice")
-        prev = info.get("regularMarketPreviousClose")
-        volume = info.get("volume", 0)
+        prev = info.get("regularMarketPreviousClose") or price
+        volume = info.get("volume") or 0
 
         if price is None or prev is None:
             return f"{name}: 시세/변동률 정보 없음"
