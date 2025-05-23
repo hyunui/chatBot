@@ -360,66 +360,85 @@ def get_help():
     )
 
 def get_market_indices():
+def get_market_indices():
+    import re
+    results = []
+    # --- 한국: 코스피/코스닥 (네이버 검색 결과) ---
     try:
-        results = []
-
-        # 한국 코스피/코스닥 (네이버)
-        try:
-            url = "https://finance.naver.com/sise/"
+        def get_naver_index(search_word):
+            url = f"https://search.naver.com/search.naver?query={search_word}"
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
             }
             r = requests.get(url, headers=headers, timeout=3)
             soup = BeautifulSoup(r.text, "html.parser")
-            kospi = soup.select_one("#KOSPI_now").text.strip()
-            kospi_rate = soup.select_one("#KOSPI_rate").text.strip()
-            kosdaq = soup.select_one("#KOSDAQ_now").text.strip()
-            kosdaq_rate = soup.select_one("#KOSDAQ_rate").text.strip()
-            results.append(f"🇰🇷 한국\n- 코스피: {kospi} ({kospi_rate})\n- 코스닥: {kosdaq} ({kosdaq_rate})")
-        except Exception:
-            results.append("🇰🇷 한국\n- 코스피/코스닥 정보를 불러올 수 없습니다.")
+            # 네이버 검색 결과 상단 지수값 (2024년 기준)
+            num = soup.select_one(".stock_tlt span.num")
+            rate = soup.select_one(".stock_tlt em span")  # 변동률
+            if not num:
+                num = soup.select_one(".rate_info strong")  # fallback
+            index = num.text.strip() if num else "정보없음"
+            change = rate.text.strip() if rate else ""
+            # +/- 부호 정리
+            if change and not change.startswith(("+", "-")):
+                change = "+" + change
+            return index, change
 
-        # 미국 주요지수 (야후파이낸스)
-        try:
-            indices = {
-                "다우존스": "^DJI",
-                "나스닥": "^IXIC",
-                "S&P500": "^GSPC"
-            }
-            us_lines = []
-            for name, ticker in indices.items():
-                stock = yf.Ticker(ticker)
-                price = stock.info["regularMarketPrice"]
-                change = stock.info["regularMarketChangePercent"]
-                sign = "+" if change >= 0 else ""
+        kospi, kospi_rate = get_naver_index("코스피 지수")
+        kosdaq, kosdaq_rate = get_naver_index("코스닥 지수")
+        results.append(f"🇰🇷 한국\n- 코스피: {kospi} ({kospi_rate})\n- 코스닥: {kosdaq} ({kosdaq_rate})")
+    except Exception:
+        results.append("🇰🇷 한국\n- 코스피/코스닥 정보를 불러올 수 없습니다.")
+
+    # --- 미국 주요지수/선물 ---
+    try:
+        indices = {
+            "다우존스": "^DJI",
+            "나스닥": "^IXIC",
+            "S&P500": "^GSPC",
+            "나스닥선물": "NQ=F",
+        }
+        us_lines = []
+        for name, ticker in indices.items():
+            stock = yf.Ticker(ticker)
+            price = stock.info.get("regularMarketPrice")
+            change = stock.info.get("regularMarketChangePercent")
+            sign = "+" if change is not None and change >= 0 else ""
+            if price is not None and change is not None:
                 us_lines.append(f"- {name}: {price:,} ({sign}{change:.2f}%)")
-            results.append("🇺🇸 미국\n" + "\n".join(us_lines))
-        except Exception:
-            results.append("🇺🇸 미국\n- 미국 지수 정보를 불러올 수 없습니다.")
+            else:
+                us_lines.append(f"- {name}: 정보없음")
+        results.append("🇺🇸 미국\n" + "\n".join(us_lines))
+    except Exception:
+        results.append("🇺🇸 미국\n- 미국 지수 정보를 불러올 수 없습니다.")
 
-        # 일본 니케이225
-        try:
-            stock = yf.Ticker("^N225")
-            price = stock.info["regularMarketPrice"]
-            change = stock.info["regularMarketChangePercent"]
-            sign = "+" if change >= 0 else ""
+    # --- 일본 니케이225 ---
+    try:
+        stock = yf.Ticker("^N225")
+        price = stock.info.get("regularMarketPrice")
+        change = stock.info.get("regularMarketChangePercent")
+        sign = "+" if change is not None and change >= 0 else ""
+        if price is not None and change is not None:
             results.append(f"🇯🇵 일본\n- 니케이225: {price:,} ({sign}{change:.2f}%)")
-        except Exception:
-            results.append("🇯🇵 일본\n- 니케이225 정보를 불러올 수 없습니다.")
+        else:
+            results.append(f"🇯🇵 일본\n- 니케이225 정보없음")
+    except Exception:
+        results.append("🇯🇵 일본\n- 니케이225 정보를 불러올 수 없습니다.")
 
-        # 중국 상해종합
-        try:
-            stock = yf.Ticker("000001.SS")
-            price = stock.info["regularMarketPrice"]
-            change = stock.info["regularMarketChangePercent"]
-            sign = "+" if change >= 0 else ""
+    # --- 중국 상해종합 ---
+    try:
+        stock = yf.Ticker("000001.SS")
+        price = stock.info.get("regularMarketPrice")
+        change = stock.info.get("regularMarketChangePercent")
+        sign = "+" if change is not None and change >= 0 else ""
+        if price is not None and change is not None:
             results.append(f"🇨🇳 중국\n- 상해종합: {price:,} ({sign}{change:.2f}%)")
-        except Exception:
-            results.append("🇨🇳 중국\n- 상해종합 정보를 불러올 수 없습니다.")
+        else:
+            results.append(f"🇨🇳 중국\n- 상해종합 정보없음")
+    except Exception:
+        results.append("🇨🇳 중국\n- 상해종합 정보를 불러올 수 없습니다.")
 
-        return "📈 주요 금융시장 지수\n\n" + "\n\n".join(results)
-    except Exception as e:
-        return f"지수 정보를 불러오지 못했습니다. 원인: {e}"
+    return "📈 주요 금융시장 지수\n\n" + "\n\n".join(results)
 
 # --- Flask 라우터 ---
 
