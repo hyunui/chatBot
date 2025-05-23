@@ -119,7 +119,7 @@ def get_upbit_price_and_change(symbol, market="KRW"):
     """
     try:
         m = market.upper()
-        r = requests.get(f"https://api.upbit.com/v1/ticker?markets={m}-{symbol.upper()}", timeout=3)
+        r = requests.get(f"https://api.upbit.com/v1/ticker?markets={m}-{symbol.upper()}", timeout=5)
         if r.status_code != 200:
             return None, None, f"Upbit API 접속 실패 (status:{r.status_code})"
         data = r.json()[0]
@@ -131,7 +131,7 @@ def get_upbit_price_and_change(symbol, market="KRW"):
 
 def get_bithumb_price_and_change(symbol):
     try:
-        r = requests.get(f"https://api.bithumb.com/public/ticker/{symbol.upper()}_KRW", timeout=3)
+        r = requests.get(f"https://api.bithumb.com/public/ticker/{symbol.upper()}_KRW", timeout=5)
         if r.status_code != 200:
             return None, None, f"Bithumb API 접속 실패 (status:{r.status_code})"
         data = r.json()
@@ -147,7 +147,7 @@ def get_bithumb_price_and_change(symbol):
 def get_exchange_rate():
     try:
         url = "https://search.naver.com/p/csearch/content/qapirender.nhn?key=calculator&pkid=141&q=환율&where=m&u1=keb&u3=USD&u4=KRW&u2=1"
-        r = requests.get(url, timeout=3)
+        r = requests.get(url, timeout=5)
         if r.status_code != 200:
             return 1400.0, f"환율 API 접속 실패 (status:{r.status_code})"
         data = r.json()
