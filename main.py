@@ -147,26 +147,27 @@ def get_coin_price(query):
         else:
             symbol = symbol.upper()
 
+        # ↓↓↓↓↓ 이 부분부터 들여쓰기(4칸) 필요
         # 환율 가져오기
-krw_usd, ex_err = get_exchange_rate()
-if ex_err:
-    error_msgs.append(f"환율: {ex_err}")
+        krw_usd, ex_err = get_exchange_rate()
+        if ex_err:
+            error_msgs.append(f"환율: {ex_err}")
 
-# CoinMarketCap 글로벌 시세 (달러 기준)
-global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
-upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
-bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
+        # CoinMarketCap 글로벌 시세 (달러 기준)
+        global_price, global_change, err1 = get_cmc_price_and_change(symbol, convert="USD")
+        upbit, upbit_change, err2 = get_upbit_price_and_change(symbol)
+        bithumb, bithumb_change, err3 = get_bithumb_price_and_change(symbol)
 
-if err1: error_msgs.append(f"글로벌가격: {err1}")
-if err2: error_msgs.append(f"업비트: {err2}")
-if err3: error_msgs.append(f"빗썸: {err3}")
+        if err1: error_msgs.append(f"글로벌가격: {err1}")
+        if err2: error_msgs.append(f"업비트: {err2}")
+        if err3: error_msgs.append(f"빗썸: {err3}")
 
-# 글로벌 가격(달러 → 원화)
-if global_price:
-    global_price_krw = global_price * krw_usd
-else:
-    global_price_krw = None
-    
+        # 글로벌 가격(달러 → 원화)
+        if global_price:
+            global_price_krw = global_price * krw_usd
+        else:
+            global_price_krw = None
+
         if not global_price_krw:
             global_str = "정보 없음"
             global_rate = ""
