@@ -291,8 +291,13 @@ def get_korea_ranking(rise=True):
             for idx, item in enumerate(items):
                 name = item.get('name', '')
                 symbol = item.get('symbol', '') or item.get('code', '')
-                changeRate = item.get('changeRate', '')
-                result.append(f"{idx+1}. {name} ({symbol}) {changeRate}%")
+                # Daum API changeRate: 0.0410 (==4.10%) 
+                try:
+                    rate = float(item.get('changeRate', 0)) * 100
+                except Exception:
+                    rate = 0.0
+                sign = "+" if rate > 0 else ""
+                result.append(f"{idx+1}. {name} ({symbol}) {sign}{rate:.2f}%")
             return result
 
         kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
