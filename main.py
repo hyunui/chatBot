@@ -360,7 +360,6 @@ def get_help():
     )
 
 def get_market_indices():
-def get_market_indices():
     import re
     results = []
     # --- 한국: 코스피/코스닥 (네이버 검색 결과) ---
