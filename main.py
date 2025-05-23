@@ -281,38 +281,37 @@ def get_korea_ranking(rise=True):
     from bs4 import BeautifulSoup
 
     try:
-        base_url = "https://finance.daum.net/domestic/features/rise_stocks"
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "referer": "https://finance.daum.net/",
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
         
-        def fetch_and_parse(url, tab_key):
+        def parse_table(url):
             r = requests.get(url, headers=headers, timeout=5)
             if r.status_code != 200:
                 return f"접속 실패 (status:{r.status_code})", []
 
             soup = BeautifulSoup(r.text, "html.parser")
-            container = soup.find("div", {"data-tab": f"{tab_key}_STOCK"})
-            if not container:
-                return "페이지 구조 변경", []
-
-            rows = container.select("table tbody tr")
+            rows = soup.select("table tbody tr")
             result = []
             for idx, tr in enumerate(rows[:30]):
                 tds = tr.find_all("td")
                 if len(tds) < 5:
                     continue
-                name_tag = tds[1].find("a")
-                name = name_tag.text.strip()
-                code = name_tag["href"].split("=")[-1]
+                a = tds[1].find("a")
+                name = a.text.strip()
+                code = a["href"].split("=")[-1]
                 rate = tds[4].text.strip()
                 result.append(f"{idx+1}. {name} ({code}) {rate}")
             return None, result
 
-        tab_key = "RISE" if rise else "FALL"
-        kospi_err, kospi_list = fetch_and_parse(base_url, tab_key)
-        kosdaq_err, kosdaq_list = fetch_and_parse(base_url + "?market=KOSDAQ", tab_key)
+        # URL 구성
+        if rise:
+            kospi_url = "https://finance.daum.net/domestic/features/rise_stocks"
+            kosdaq_url = "https://finance.daum.net/domestic/features/rise_stocks/kosdaq"
+        else:
+            kospi_url = "https://finance.daum.net/domestic/features/fall_stocks"
+            kosdaq_url = "https://finance.daum.net/domestic/features/fall_stocks/kosdaq"
+
+        kospi_err, kospi_list = parse_table(kospi_url)
+        kosdaq_err, kosdaq_list = parse_table(kosdaq_url)
 
         if kospi_err and kosdaq_err:
             return f"코스피: {kospi_err}\n코스닥: {kosdaq_err}"
