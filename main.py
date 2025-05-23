@@ -277,52 +277,53 @@ def get_us_stock_price(ticker):
         return f"미국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
 def get_korea_ranking(rise=True):
+    import requests
+    from bs4 import BeautifulSoup
+
     try:
+        base_url = "https://finance.daum.net/domestic/features/rise_stocks"
         headers = {
             "User-Agent": "Mozilla/5.0",
-            "referer": "https://finance.daum.net/domestic/features/rise_stocks/kospi",
+            "referer": "https://finance.daum.net/",
         }
-        fieldName = "changeRate"
-        order = "desc" if rise else "asc"
-        change = "RISE" if rise else "FALL"
+        
+        def fetch_and_parse(url, tab_key):
+            r = requests.get(url, headers=headers, timeout=5)
+            if r.status_code != 200:
+                return f"접속 실패 (status:{r.status_code})", []
 
-        def parse_items(items):
+            soup = BeautifulSoup(r.text, "html.parser")
+            container = soup.find("div", {"data-tab": f"{tab_key}_STOCK"})
+            if not container:
+                return "페이지 구조 변경", []
+
+            rows = container.select("table tbody tr")
             result = []
-            for idx, item in enumerate(items):
-                name = item.get('name', '')
-                symbol = item.get('symbol', '') or item.get('code', '')
-                # Daum API changeRate: 0.0410 (==4.10%) 
-                try:
-                    rate = float(item.get('changeRate', 0)) * 100
-                except Exception:
-                    rate = 0.0
-                sign = "+" if rate > 0 else ""
-                result.append(f"{idx+1}. {name} ({symbol}) {sign}{rate:.2f}%")
-            return result
+            for idx, tr in enumerate(rows[:30]):
+                tds = tr.find_all("td")
+                if len(tds) < 5:
+                    continue
+                name_tag = tds[1].find("a")
+                name = name_tag.text.strip()
+                code = name_tag["href"].split("=")[-1]
+                rate = tds[4].text.strip()
+                result.append(f"{idx+1}. {name} ({code}) {rate}")
+            return None, result
 
-        kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
-        resp_kospi = requests.get(kospi_url, headers=headers, timeout=3)
-        if resp_kospi.status_code != 200:
-            return f"코스피 정보 접속 실패 (status:{resp_kospi.status_code})"
-        items_kospi = resp_kospi.json().get("data", [])
-        kospi_list = parse_items(items_kospi)
+        tab_key = "RISE" if rise else "FALL"
+        kospi_err, kospi_list = fetch_and_parse(base_url, tab_key)
+        kosdaq_err, kosdaq_list = fetch_and_parse(base_url + "?market=KOSDAQ", tab_key)
 
-        kosdaq_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSDAQ&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
-        resp_kosdaq = requests.get(kosdaq_url, headers=headers, timeout=3)
-        if resp_kosdaq.status_code != 200:
-            return f"코스닥 정보 접속 실패 (status:{resp_kosdaq.status_code})"
-        items_kosdaq = resp_kosdaq.json().get("data", [])
-        kosdaq_list = parse_items(items_kosdaq)
+        if kospi_err and kosdaq_err:
+            return f"코스피: {kospi_err}\n코스닥: {kosdaq_err}"
 
-        if not kospi_list and not kosdaq_list:
-            return "한국주식 정보를 불러오지 못했습니다."
         res = "코스피 상승률\n" if rise else "코스피 하락률\n"
-        res += "\n".join(kospi_list)
+        res += "\n".join(kospi_list or ["정보 없음"])
         res += "\n\n코스닥 상승률\n" if rise else "\n\n코스닥 하락률\n"
-        res += "\n".join(kosdaq_list)
+        res += "\n".join(kosdaq_list or ["정보 없음"])
         return res
     except Exception as e:
-        return f"한국주식 {'상승률' if rise else '하락률'} 정보를 불러오지 못했습니다. 원인: {e}"
+        return f"한국주식 {'상승률' if rise else '하락률'} 정보를 불러오는 중 오류 발생: {e}"
 
 def get_us_ranking(rise=True):
     try:
