@@ -226,11 +226,16 @@ def get_coin_price(query):
         return f"코인 시세 조회 중 오류 발생: {e}"
         
 def get_korean_stock_price(query):
+def get_korean_stock_price(query):
     try:
-        entry = STOCK_CODE_MAP.get(query.strip())
-        if not entry:
+        code = STOCK_CODE_MAP.get(query.strip())
+        if not code:
             return f"{query}: 종목코드를 찾을 수 없습니다."
-        code, market = entry
+        # 코스피/코스닥 구분(간단 규칙 적용, 완벽하진 않음)
+        if code.startswith('0') or code.startswith('1'):
+            market = "KS"
+        else:
+            market = "KQ"
         symbol = f"{code}.{market}"
         stock = yf.Ticker(symbol)
         info = stock.info
@@ -250,7 +255,7 @@ def get_korean_stock_price(query):
                 f"📊 거래량 → {int(volume):,}주")
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
-
+        
 def get_us_stock_price(ticker):
     try:
         stock = yf.Ticker(ticker)
