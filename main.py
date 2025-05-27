@@ -279,52 +279,47 @@ def get_us_stock_price(ticker):
         return f"미국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
 def get_korea_ranking(rise=True):
-    import requests
-    from bs4 import BeautifulSoup
-
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        
-        def parse_table(url):
-            r = requests.get(url, headers=headers, timeout=5)
-            if r.status_code != 200:
-                return f"접속 실패 (status:{r.status_code})", []
-
-            soup = BeautifulSoup(r.text, "html.parser")
-            rows = soup.select("table tbody tr")
-            result = []
-            for idx, tr in enumerate(rows[:30]):
-                tds = tr.find_all("td")
-                if len(tds) < 5:
-                    continue
-                a = tds[1].find("a")
-                name = a.text.strip()
-                code = a["href"].split("=")[-1]
-                rate = tds[4].text.strip()
-                result.append(f"{idx+1}. {name} ({code}) {rate}")
-            return None, result
-
-        # URL 구성
-        if rise:
-            kospi_url = "https://finance.daum.net/domestic/features/rise_stocks"
-            kosdaq_url = "https://finance.daum.net/domestic/features/rise_stocks/kosdaq"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "referer": "https://finance.daum.net/domestic/features/rise_stocks/kospi",
+        }
+        fieldName = "changeRate"
+        order = "desc" if rise else "asc"
+        change = "RISE" if rise else "FALL"
+        # 코스피
+        kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
+        resp_kospi = requests.get(kospi_url, headers=headers, timeout=5)
+        kospi_list = []
+        if resp_kospi.status_code == 200:
+            items = resp_kospi.json().get("data", [])
+            kospi_list = [
+                f"{idx+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%"
+                for idx, item in enumerate(items)
+            ]
         else:
-            kospi_url = "https://finance.daum.net/domestic/features/fall_stocks"
-            kosdaq_url = "https://finance.daum.net/domestic/features/fall_stocks/kosdaq"
+            kospi_list = [f"코스피 정보 접속 실패 (status:{resp_kospi.status_code})"]
 
-        kospi_err, kospi_list = parse_table(kospi_url)
-        kosdaq_err, kosdaq_list = parse_table(kosdaq_url)
-
-        if kospi_err and kosdaq_err:
-            return f"코스피: {kospi_err}\n코스닥: {kosdaq_err}"
+        # 코스닥
+        kosdaq_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSDAQ&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
+        resp_kosdaq = requests.get(kosdaq_url, headers=headers, timeout=5)
+        kosdaq_list = []
+        if resp_kosdaq.status_code == 200:
+            items = resp_kosdaq.json().get("data", [])
+            kosdaq_list = [
+                f"{idx+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%"
+                for idx, item in enumerate(items)
+            ]
+        else:
+            kosdaq_list = [f"코스닥 정보 접속 실패 (status:{resp_kosdaq.status_code})"]
 
         res = "코스피 상승률\n" if rise else "코스피 하락률\n"
-        res += "\n".join(kospi_list or ["정보 없음"])
+        res += "\n".join(kospi_list)
         res += "\n\n코스닥 상승률\n" if rise else "\n\n코스닥 하락률\n"
-        res += "\n".join(kosdaq_list or ["정보 없음"])
+        res += "\n".join(kosdaq_list)
         return res
     except Exception as e:
-        return f"한국주식 {'상승률' if rise else '하락률'} 정보를 불러오는 중 오류 발생: {e}"
+        return f"한국주식 {'상승률' if rise else '하락률'} 정보를 불러오지 못했습니다. 원인: {e}"
 
 def get_us_ranking(rise=True):
     try:
