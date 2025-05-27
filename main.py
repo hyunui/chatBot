@@ -195,7 +195,7 @@ def get_coin_price(query):
         
 def get_stock_code_from_naver(name):
     """
-    네이버 금융 모바일 검색 API를 통해 종목명 → 종목코드 추출
+    네이버 모바일 주식 검색 API를 통해 종목명 → 종목코드 변환
     """
     try:
         url = f"https://m.stock.naver.com/api/search/searchList?keyword={name}"
@@ -208,7 +208,7 @@ def get_stock_code_from_naver(name):
             if item.get("stockName") == name:
                 return item.get("itemCode"), item.get("stockName")
         return None, None
-    except Exception as e:
+    except Exception:
         return None, None     
         
 def get_korean_stock_price(query):
@@ -260,6 +260,9 @@ def get_us_stock_price(ticker):
         return f"미국 주식 정보를 가져올 수 없습니다. 원인: {e}"
 
 def get_korea_ranking(rise=True):
+    """
+    다음 금융 API를 이용해 코스피/코스닥 상승률 또는 하락률 상위 30개 종목을 반환
+    """
     try:
         headers = {
             "User-Agent": "Mozilla/5.0",
@@ -268,12 +271,13 @@ def get_korea_ranking(rise=True):
         fieldName = "changeRate"
         order = "desc" if rise else "asc"
         change = "RISE" if rise else "FALL"
-        # KOSPI
+
+        # 코스피
         kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
         r1 = requests.get(kospi_url, headers=headers, timeout=5)
         kospi_data = r1.json().get("data", []) if r1.status_code == 200 else []
 
-        # KOSDAQ
+        # 코스닥
         kosdaq_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSDAQ&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
         r2 = requests.get(kosdaq_url, headers=headers, timeout=5)
         kosdaq_data = r2.json().get("data", []) if r2.status_code == 200 else []
