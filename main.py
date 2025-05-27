@@ -266,28 +266,31 @@ def get_us_stock_price(ticker):
 
 def get_korea_ranking(rise=True):
     try:
-        url = "https://finance.naver.com/sise/sise_upper.nhn" if rise else "https://finance.naver.com/sise/sise_lower.nhn"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(r.text, "html.parser")
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "referer": "https://finance.daum.net/",
+        }
+        fieldName = "changeRate"
+        order = "desc" if rise else "asc"
+        change = "RISE" if rise else "FALL"
+        # KOSPI
+        kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
+        r1 = requests.get(kospi_url, headers=headers, timeout=5)
+        kospi_data = r1.json().get("data", []) if r1.status_code == 200 else []
 
-        rows = soup.select("table.type_2 tr")[2:]  # 첫 2줄은 헤더
-        results = []
-        for row in rows:
-            cols = row.select("td")
-            if len(cols) < 6:
-                continue
-            name = cols[1].text.strip()
-            change_rate = cols[5].text.strip()
-            code = cols[1].select_one("a")["href"].split("code=")[-1]
-            results.append(f"{len(results)+1}. {name} ({code}) {change_rate}")
-            if len(results) >= 30:
-                break
-        header = "📈 한국주식 상승률 TOP30" if rise else "📉 한국주식 하락률 TOP30"
-        return f"{header}\n\n" + "\n".join(results)
+        # KOSDAQ
+        kosdaq_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSDAQ&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
+        r2 = requests.get(kosdaq_url, headers=headers, timeout=5)
+        kosdaq_data = r2.json().get("data", []) if r2.status_code == 200 else []
+
+        kospi_lines = [f"{i+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%" for i, item in enumerate(kospi_data)]
+        kosdaq_lines = [f"{i+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%" for i, item in enumerate(kosdaq_data)]
+
+        title = "📈 한국주식 상승률 TOP30" if rise else "📉 한국주식 하락률 TOP30"
+        return f"{title}\n\n[코스피]\n" + "\n".join(kospi_lines) + "\n\n[코스닥]\n" + "\n".join(kosdaq_lines)
     except Exception as e:
         return f"한국주식 {'상승률' if rise else '하락률'} 정보를 불러오지 못했습니다. 원인: {e}"
-
+        
 def get_us_ranking(rise=True):
     try:
         suffix = "day_gainers" if rise else "day_losers"
