@@ -262,7 +262,7 @@ def get_us_stock_price(ticker):
 
 def get_korea_ranking(rise=True):
     """
-    네이버 금융 HTML 기반 상승률/하락률 TOP30 크롤링
+    네이버 금융 HTML 기반 상승률/하락률 TOP20 크롤링 (카카오 응답 길이 제한 대응)
     """
     try:
         url = "https://finance.naver.com/sise/sise_rise.naver" if rise else "https://finance.naver.com/sise/sise_fall.naver"
@@ -282,10 +282,10 @@ def get_korea_ranking(rise=True):
             code_tag = cols[1].select_one("a")
             code = code_tag["href"].split("code=")[-1] if code_tag else "Unknown"
             results.append(f"{len(results)+1}. {name} ({code}) {rate}")
-            if len(results) >= 30:
+            if len(results) >= 20:  # TOP20 제한
                 break
 
-        header = "📈 한국주식 상승률 TOP30" if rise else "📉 한국주식 하락률 TOP30"
+        header = "📈 한국주식 상승률 TOP20" if rise else "📉 한국주식 하락률 TOP20"
         return f"{header}\n\n" + "\n".join(results)
 
     except Exception as e:
