@@ -212,7 +212,7 @@ def get_coin_price(query):
 
         result = f"""[{symbol}] {kr_name} 시세
 
-💰 글로벌 가격 "\n" → {global_str}{global_rate} "\n"
+💰 글로벌 가격 \n → {global_str}{global_rate} \n
 🇰🇷 국내 거래소 가격
 - 업비트 → {f'₩{upbit:,} ({upbit_change:+.2f}%)' if upbit else '정보 없음'}
 - 빗썸 → {f'₩{bithumb:,} ({bithumb_change:+.2f}%)' if bithumb else '정보 없음'}
