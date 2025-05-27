@@ -192,23 +192,24 @@ def get_coin_price(query):
         return result
     except Exception as e:
         return f"코인 시세 조회 중 오류 발생: {e}"
-        
+
 def get_stock_code_from_naver(name):
     """
-    네이버 모바일 주식 검색 API를 통해 종목명 → 종목코드 변환
+    네이버 웹 검색을 통해 종목명 → 종목코드 추출 (m.stock.naver.com 대체용)
     """
     try:
-        url = f"https://m.stock.naver.com/api/search/searchList?keyword={name}"
+        url = f"https://finance.naver.com/search/search.naver?query={name}"
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=5)
-        if r.status_code != 200:
+        soup = BeautifulSoup(r.text, "html.parser")
+        link = soup.select_one("a[href*='/item/main.nhn?code=']")
+        if not link:
             return None, None
-        js = r.json()
-        for item in js.get("stockList", []):
-            if item.get("stockName") == name:
-                return item.get("itemCode"), item.get("stockName")
-        return None, None
-    except Exception:
+        href = link["href"]
+        code = href.split("code=")[-1]
+        stock_name = link.text.strip()
+        return code, stock_name
+    except Exception as e:
         return None, None     
         
 def get_korean_stock_price(query):
