@@ -201,23 +201,17 @@ def get_korean_stock_price(query):
     try:
         # 1. 종목명 → 종목코드 찾기
         def get_stock_code_from_naver(name):
-    """
-    네이버 자동완성 API를 통해 종목명 → 종목코드 반환
-    """
     try:
-        url = f"https://ac.finance.naver.com/ac?q={name}&q_enc=utf-8&st=111&r_format=json&r_enc=utf-8"
+        url = f"https://m.stock.naver.com/api/search/searchList?keyword={name}"
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=5)
         if r.status_code != 200:
             return None, None
         js = r.json()
-        items = js.get("items")
-        if not items or not items[0]:
-            return None, None
-        parts = items[0][0]
-        stock_name = parts[0]
-        code = parts[1]
-        return code, stock_name
+        for item in js.get("stockList", []):
+            if item.get("stockName") == name:
+                return item.get("itemCode"), item.get("stockName")
+        return None, None
     except Exception as e:
         return None, None
 
