@@ -280,44 +280,25 @@ def get_us_stock_price(ticker):
 
 def get_korea_ranking(rise=True):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "referer": "https://finance.daum.net/domestic/features/rise_stocks/kospi",
-        }
-        fieldName = "changeRate"
-        order = "desc" if rise else "asc"
-        change = "RISE" if rise else "FALL"
-        # 코스피
-        kospi_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSPI&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
-        resp_kospi = requests.get(kospi_url, headers=headers, timeout=5)
-        kospi_list = []
-        if resp_kospi.status_code == 200:
-            items = resp_kospi.json().get("data", [])
-            kospi_list = [
-                f"{idx+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%"
-                for idx, item in enumerate(items)
-            ]
-        else:
-            kospi_list = [f"코스피 정보 접속 실패 (status:{resp_kospi.status_code})"]
+        url = "https://finance.naver.com/sise/sise_upper.nhn" if rise else "https://finance.naver.com/sise/sise_lower.nhn"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        # 코스닥
-        kosdaq_url = f"https://finance.daum.net/api/quotes/stocks?exchange=KOSDAQ&change={change}&page=1&perPage=30&fieldName={fieldName}&order={order}"
-        resp_kosdaq = requests.get(kosdaq_url, headers=headers, timeout=5)
-        kosdaq_list = []
-        if resp_kosdaq.status_code == 200:
-            items = resp_kosdaq.json().get("data", [])
-            kosdaq_list = [
-                f"{idx+1}. {item['name']} ({item['symbol']}) {item['changeRate']}%"
-                for idx, item in enumerate(items)
-            ]
-        else:
-            kosdaq_list = [f"코스닥 정보 접속 실패 (status:{resp_kosdaq.status_code})"]
-
-        res = "코스피 상승률\n" if rise else "코스피 하락률\n"
-        res += "\n".join(kospi_list)
-        res += "\n\n코스닥 상승률\n" if rise else "\n\n코스닥 하락률\n"
-        res += "\n".join(kosdaq_list)
-        return res
+        rows = soup.select("table.type_2 tr")[2:]  # 첫 2줄은 헤더
+        results = []
+        for row in rows:
+            cols = row.select("td")
+            if len(cols) < 6:
+                continue
+            name = cols[1].text.strip()
+            change_rate = cols[5].text.strip()
+            code = cols[1].select_one("a")["href"].split("code=")[-1]
+            results.append(f"{len(results)+1}. {name} ({code}) {change_rate}")
+            if len(results) >= 30:
+                break
+        header = "📈 한국주식 상승률 TOP30" if rise else "📉 한국주식 하락률 TOP30"
+        return f"{header}\n\n" + "\n".join(results)
     except Exception as e:
         return f"한국주식 {'상승률' if rise else '하락률'} 정보를 불러오지 못했습니다. 원인: {e}"
 
