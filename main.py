@@ -193,14 +193,10 @@ def get_coin_price(query):
     except Exception as e:
         return f"코인 시세 조회 중 오류 발생: {e}"
         
-def get_korean_stock_price(query):
+def get_stock_code_from_naver(name):
     """
-    종목명을 입력받아 네이버 금융에서 종목코드를 검색하고,
-    해당 종목의 시세/변동률/거래대금을 크롤링하여 반환
+    네이버 금융 모바일 검색 API를 통해 종목명 → 종목코드 추출
     """
-    try:
-        # 1. 종목명 → 종목코드 찾기
-        def get_stock_code_from_naver(name):
     try:
         url = f"https://m.stock.naver.com/api/search/searchList?keyword={name}"
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -213,13 +209,18 @@ def get_korean_stock_price(query):
                 return item.get("itemCode"), item.get("stockName")
         return None, None
     except Exception as e:
-        return None, None
-
+        return None, None     
+        
+def get_korean_stock_price(query):
+    """
+    종목명을 입력받아 종목코드 조회 후,
+    네이버 금융에서 현재가, 등락률, 거래량 크롤링하여 출력
+    """
+    try:
         code, stock_name = (query.zfill(6), query) if query.isdigit() else get_stock_code_from_naver(query)
         if not code:
             return f"{query}: 종목코드를 찾을 수 없습니다."
 
-        # 2. 네이버 금융에서 시세 크롤링
         url = f"https://finance.naver.com/item/main.nhn?code={code}"
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=5)
@@ -239,8 +240,8 @@ def get_korean_stock_price(query):
         volume = int(volume_tag[1].text.replace(",", "")) if len(volume_tag) > 1 else 0
 
         return (f"[{stock_name}] 주식 시세\n"
-        f"💰 현재 가격 → ₩{price:,} ({sign}{abs(change):.2f}%)\n"
-        f"📊 거래량 → {volume:,}주")
+                f"💰 현재 가격 → ₩{price:,} ({sign}{abs(change):.2f}%)\n"
+                f"📊 거래량 → {volume:,}주")
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
         
