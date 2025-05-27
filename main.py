@@ -227,40 +227,51 @@ def get_coin_price(query):
         return f"코인 시세 조회 중 오류 발생: {e}"
         
 def get_korean_stock_price(query):
+    """
+    종목명을 입력받아 네이버 금융에서 종목코드를 검색하고,
+    해당 종목의 시세/변동률/거래대금을 크롤링하여 반환
+    """
     try:
-        code = STOCK_CODE_MAP.get(query.strip())
+        # 1. 종목명 → 종목코드 찾기
+        def get_stock_code_from_naver(name):
+            url = f"https://finance.naver.com/search/search.naver?query={name}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get(url, headers=headers, timeout=5)
+            soup = BeautifulSoup(r.text, "html.parser")
+            link = soup.select_one("a[href*='/item/main.nhn?code=']")
+            if not link:
+                return None, None
+            href = link["href"]
+            code = href.split("code=")[-1]
+            stock_name = link.text.strip()
+            return code, stock_name
+
+        code, stock_name = (query.zfill(6), query) if query.isdigit() else get_stock_code_from_naver(query)
         if not code:
             return f"{query}: 종목코드를 찾을 수 없습니다."
 
-        # 종목코드 → 한글명 매핑 (예: {'005930': '삼성전자'})
-        kor_name = CODE_TO_KORNAME.get(code, query.strip())
+        # 2. 네이버 금융에서 시세 크롤링
+        url = f"https://finance.naver.com/item/main.nhn?code={code}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        symbols = [f"{code}.KS", f"{code}.KQ"]
-        info = None
-        symbol_used = None
-        for symbol in symbols:
-            stock = yf.Ticker(symbol)
-            info = stock.info
-            price = info.get("regularMarketPrice")
-            if price is not None:
-                symbol_used = symbol
-                break
+        price_tag = soup.select_one("p.no_today span.blind")
+        change_tag = soup.select_one("p.no_exday span.blind")
+        change_sign_tag = soup.select_one("p.no_exday span:nth-of-type(2)")
+        volume_tag = soup.select("td.first span.blind")
 
-        if info is None or info.get("regularMarketPrice") is None:
-            return f"{kor_name}: 시세/변동률 정보 없음 (야후파이낸스 심볼 미일치)"
+        if not price_tag or not change_tag or not volume_tag:
+            return f"{stock_name}: 시세 정보 크롤링 실패"
 
-        price = info.get("regularMarketPrice")
-        prev = info.get("regularMarketPreviousClose") or price
-        volume = info.get("volume") or 0
+        price = int(price_tag.text.replace(",", ""))
+        change = float(change_tag.text.replace(",", ""))
+        sign = "+" if "up" in change_sign_tag.get("class", []) else "-"
+        volume = int(volume_tag[1].text.replace(",", "")) if len(volume_tag) > 1 else 0
 
-        if price is None or prev is None:
-            return f"{kor_name}: 시세/변동률 정보 없음"
-
-        change = ((price - prev) / prev * 100) if prev else 0
-        sign = "+" if change >= 0 else ""
-        return (f"[{kor_name}] 주식 시세\n"
-                f"💰 현재 가격 → ₩{int(price):,} ({sign}{change:.2f}%)\n"
-                f"📊 거래량 → {int(volume):,}주")
+        return (f"[{stock_name}] 주식 시세\n"
+                f"💰 현재 가격 → ₩{price:,} ({sign}{abs(change):.2f}%)\n"
+                f"📊 거래대금 → ₩{volume:,}")
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
         
