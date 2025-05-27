@@ -234,17 +234,25 @@ def get_korean_stock_price(query):
     try:
         # 1. 종목명 → 종목코드 찾기
         def get_stock_code_from_naver(name):
-            url = f"https://finance.naver.com/search/search.naver?query={name}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(url, headers=headers, timeout=5)
-            soup = BeautifulSoup(r.text, "html.parser")
-            link = soup.select_one("a[href*='/item/main.nhn?code=']")
-            if not link:
-                return None, None
-            href = link["href"]
-            code = href.split("code=")[-1]
-            stock_name = link.text.strip()
-            return code, stock_name
+    """
+    네이버 자동완성 API를 통해 종목명 → 종목코드 반환
+    """
+    try:
+        url = f"https://ac.finance.naver.com/ac?q={name}&q_enc=utf-8&st=111&r_format=json&r_enc=utf-8"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=5)
+        if r.status_code != 200:
+            return None, None
+        js = r.json()
+        items = js.get("items")
+        if not items or not items[0]:
+            return None, None
+        parts = items[0][0]
+        stock_name = parts[0]
+        code = parts[1]
+        return code, stock_name
+    except Exception as e:
+        return None, None
 
         code, stock_name = (query.zfill(6), query) if query.isdigit() else get_stock_code_from_naver(query)
         if not code:
