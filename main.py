@@ -270,8 +270,8 @@ def get_korean_stock_price(query):
         volume = int(volume_tag[1].text.replace(",", "")) if len(volume_tag) > 1 else 0
 
         return (f"[{stock_name}] 주식 시세\n"
-                f"💰 현재 가격 → ₩{price:,} ({sign}{abs(change):.2f}%)\n"
-                f"📊 거래대금 → ₩{volume:,}")
+        f"💰 현재 가격 → ₩{price:,} ({sign}{abs(change):.2f}%)\n"
+        f"📊 거래량 → {volume:,}주")
     except Exception as e:
         return f"한국 주식 정보를 가져올 수 없습니다. 원인: {e}"
         
